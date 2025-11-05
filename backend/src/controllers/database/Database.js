@@ -206,7 +206,7 @@ class TradingDatabase {
         // 优先使用WebSocket缓存
         let ticker = null;
         if (this.tickerWebSocket) {
-          const wsTickerData = this.tickerWebSocket.getTicker(position.symbol);
+          const wsTickerData = await this.tickerWebSocket.getTicker(position.symbol);
           if (wsTickerData) {
             ticker = {
               symbol: wsTickerData.symbol,
@@ -439,7 +439,7 @@ class TradingDatabase {
         try {
           // 优先使用WebSocket缓存
           if (this.tickerWebSocket) {
-            const wsTickerData = this.tickerWebSocket.getTicker(symbol);
+            const wsTickerData = await this.tickerWebSocket.getTicker(symbol);
             if (wsTickerData) {
               closePrice = wsTickerData.price;
             }

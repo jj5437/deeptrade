@@ -103,7 +103,7 @@ class RiskMonitor {
       // 获取当前价格（优先使用WebSocket缓存）
       let ticker = null;
       if (this.tickerWebSocket) {
-        const wsTickerData = this.tickerWebSocket.getTicker(symbol);
+        const wsTickerData = await this.tickerWebSocket.getTicker(symbol);
         if (wsTickerData) {
           ticker = {
             price: wsTickerData.price

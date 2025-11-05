@@ -240,7 +240,7 @@ class PositionManager {
         // 优先使用WebSocket缓存
         let ticker = null;
         if (this.tickerWebSocket) {
-          const wsTickerData = this.tickerWebSocket.getTicker(exchangeSymbol);
+          const wsTickerData = await this.tickerWebSocket.getTicker(exchangeSymbol);
           if (wsTickerData) {
             ticker = {
               price: wsTickerData.price

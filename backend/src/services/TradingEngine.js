@@ -89,7 +89,7 @@ class TradingEngine {
 
           // 验证价格数据
           if (typeof tickerData.price !== 'number' || isNaN(tickerData.price)) {
-            systemLogger.warn(`价格数据无效: ${formattedSymbol}，跳过缓存`);
+            systemLogger.error(`❌ 价格数据无效: ${formattedSymbol}, price=${tickerData.price}, 类型=${typeof tickerData.price}`);
             return;
           }
 
@@ -106,7 +106,6 @@ class TradingEngine {
 
           // 使用formattedSymbol作为key，确保唯一性
           this.marketDataCache.set(formattedSymbol, marketData);
-          systemLogger.debug(`缓存市场数据: ${formattedSymbol} = ${tickerData.price}`);
         });
       });
       this.tickerWebSocket.connectWithCombinedStreams();
@@ -321,12 +320,12 @@ class TradingEngine {
       const updatedPositions = [];
 
       for (const position of positions) {
-        const wsTickerData = this.tickerWebSocket.getTicker(position.symbol);
+        const wsTickerData = await this.tickerWebSocket.getTicker(position.symbol);
         if (wsTickerData) {
           const currentPrice = wsTickerData.price;
 
           // 计算盈亏
-          const sideMultiplier = position.side === 'short' ? -1 : 1;
+          const sideMultiplier = position.side === 'sell' ? -1 : 1;
           const priceDiff = (currentPrice - position.entryPrice) * sideMultiplier;
           const pnl = priceDiff * position.size;
           const pnlPercent = (priceDiff / position.entryPrice) * position.leverage * 100;
@@ -395,10 +394,16 @@ class TradingEngine {
       kline4h = await exchangeUtils.getOHLCVWithRetry(symbol, '4h', 100);
 
       // 2. 获取当前价格（优先使用WebSocket缓存）
-      const wsTickerData = this.tickerWebSocket.getTicker(symbol);
+      const wsTickerData = await this.tickerWebSocket.getTicker(symbol);
       if (!wsTickerData) {
         // 缓存未就绪，静默跳过分析
         systemLogger.warn(`${symbol} WebSocket缓存未就绪，跳过分析`);
+        return;
+      }
+
+      // 检查价格数据是否有效
+      if (!wsTickerData.price || isNaN(wsTickerData.price)) {
+        systemLogger.error(`${symbol} 价格数据无效: ${wsTickerData.price}，跳过分析`);
         return;
       }
 
@@ -413,17 +418,17 @@ class TradingEngine {
         baseVolume: wsTickerData.volume24h,
         timestamp: wsTickerData.timestamp
       };
-      systemLogger.warn(`${symbol} 使用WebSocket缓存价格`);
+      systemLogger.warn(`${symbol} 使用WebSocket缓存价格，转换后 ticker.last=${ticker.last}`);
 
       // 3. 准备完整的价格数据
       const priceData = {
         symbol,
-        price: ticker.price,
+        price: ticker.last,
         timestamp: ticker.timestamp,
-        high: ticker.high24h,
-        low: ticker.low24h,
-        volume: ticker.volume24h,
-        price_change: ticker.changePercent24h,
+        high: ticker.high,
+        low: ticker.low,
+        volume: ticker.volume,
+        price_change: ticker.percentage,
         klineData: kline3m.slice(-5).map(k => ({
           timestamp: k[0],
           open: k[1],
@@ -640,56 +645,62 @@ class TradingEngine {
   }
 
   /**
-   * 开仓
+   * 开仓 - 完全参照ExchangeUtils.closePosition()的逻辑
    */
   async openPosition(symbol, side, priceData, signalData) {
+    // 先转换symbol格式
+    // Binance需要特殊处理：Symbol需要是 BTCUSDT 格式（不带/和:）
+    let binanceSymbol = symbol;
+    if (env.exchange.type === 'binance' || symbol.includes('/')) {
+      binanceSymbol = symbol.replace('/', '').replace(':USDT', '');
+    }
+
+    // Binance创建订单需要使用 BUY/SELL 而不是 long/short
+    const orderSide = side === 'long' ? 'BUY' : 'SELL';
+    const orderSideLower = orderSide.toLowerCase();
+
     try {
+      // 计算开仓数量
       const amount = env.trading.amountUsd / priceData.price;
-      const tradeSymbol = exchangeUtils.formatSymbol(symbol);
 
-      // Binance需要特殊处理：Symbol需要是 BTCUSDT 格式（不带/和:）
-      let binanceSymbol = tradeSymbol;
-      if (env.exchange.type === 'binance' || tradeSymbol.includes('/')) {
-        binanceSymbol = tradeSymbol.replace('/', '').replace(':USDT', '');
-      }
+      // 使用交易所工具获取正确的精度格式化
+      const formattedAmount = await exchangeUtils.formatAmountWithPrecision(symbol, amount);
 
-      // Binance创建订单需要使用 BUY/SELL 而不是 long/short
-      const orderSide = side === 'long' ? 'BUY' : 'SELL';
+      systemLogger.info(`📋 尝试开仓: symbol=${binanceSymbol}, side=${orderSide}, quantity=${formattedAmount}, leverage=${env.trading.leverage}`);
 
-      // 构建订单参数
+      // 完全参照closePosition的下单逻辑
       const orderParams = {
         symbol: binanceSymbol,
         side: orderSide,
         type: 'MARKET',
-        quantity: amount.toString(),
+        quantity: formattedAmount,
         leverage: env.trading.leverage.toString(),
         marginMode: 'ISOLATED',
         positionSide: side.toUpperCase() // LONG 或 SHORT
       };
 
-      systemLogger.info(`📋 尝试开仓参数: ${JSON.stringify(orderParams)}`);
-
-      // 使用ccxt的私有API方法直接调用
+      // 使用ccxt的私有API方法直接调用（参照closePosition）
       const order = await exchange.fapiPrivatePostOrder(orderParams);
 
       // 保存到数据库
+      const amountForDb = parseFloat(formattedAmount);
       this.db.savePosition({
         symbol,
-        side,
-        size: amount,
+        side: orderSideLower,
+        size: amountForDb,
         entryPrice: priceData.price,
         entryTime: new Date().toISOString(),
         aiStopLoss: signalData.stopLoss,
         aiTakeProfit: signalData.takeProfit,
         leverage: env.trading.leverage,
-        margin: amount / env.trading.leverage
+        margin: amountForDb / env.trading.leverage
       });
 
       this.db.addTradeLog({
         symbol,
         action: 'open_position',
-        side,
-        size: amount,
+        side: orderSideLower,
+        size: amountForDb,
         price: priceData.price,
         details: {
           leverage: env.trading.leverage,
@@ -700,7 +711,7 @@ class TradingEngine {
         success: true
       });
 
-      systemLogger.info(`${symbol} 开仓成功: ${side} ${amount}`);
+      systemLogger.info(`${symbol} 开仓成功: ${side} ${amountForDb}`);
 
       // 清除缓存
       positionCache.clear(symbol);
@@ -710,7 +721,7 @@ class TradingEngine {
         id: order.orderId,
         symbol: symbol,
         side: side,
-        amount: amount,
+        amount: amountForDb,
         type: 'market',
         price: priceData.price,
         timestamp: order.transactTime || Date.now(),
@@ -721,7 +732,7 @@ class TradingEngine {
       this.db.addTradeLog({
         symbol,
         action: 'open_position',
-        side,
+        side: orderSideLower,
         message: `开仓失败: ${error.message}`,
         success: false
       });

@@ -482,6 +482,71 @@ class ExchangeUtils {
   }
 
   /**
+   * 获取交易对的精度信息
+   */
+  async getSymbolPrecision(symbol) {
+    try {
+      // 加载市场信息（如果尚未加载）
+      await exchange.loadMarkets();
+
+      // 获取格式化后的symbol
+      const formattedSymbol = this.formatSymbol(symbol);
+
+      // 从市场中获取精度信息
+      const market = exchange.markets[formattedSymbol];
+
+      if (!market) {
+        systemLogger.error(`未找到${symbol}的市场信息，可用市场: ${Object.keys(exchange.markets).slice(0, 10).join(', ')}...`);
+        return { amount: 5, price: 5 };
+      }
+
+      systemLogger.info(`${symbol} 市场信息: ${JSON.stringify({ id: market.id, symbol: market.symbol, precision: market.precision })}`);
+
+      // CCXT在market.precision中提供精度信息
+      const precision = market.precision || {};
+
+      // 对于Binance期货，通常 amount 的精度是 3-5 位小数，price 是 2-5 位小数
+      // 但我们需要从market.precision.amount获取实际的精度值
+      const amountPrecision = precision.amount || 5;
+      const pricePrecision = precision.price || 5;
+
+      systemLogger.info(`${symbol} 精度: amount=${amountPrecision}, price=${pricePrecision}`);
+
+      return {
+        amount: amountPrecision,
+        price: pricePrecision
+      };
+    } catch (error) {
+      systemLogger.warn(`获取${symbol}精度信息失败: ${error.message}，使用默认精度`);
+      return { amount: 5, price: 5 };
+    }
+  }
+
+  /**
+   * 根据交易对精度格式化数量
+   */
+  async formatAmountWithPrecision(symbol, amount) {
+    const precision = await this.getSymbolPrecision(symbol);
+    const stepSize = precision.amount;
+
+    // CCXT返回的precision.amount是最小交易单位（步长），不是小数位数
+    // 例如：0.001 意味着数量必须是0.001的倍数
+
+    // 计算步数
+    const steps = Math.round(amount / stepSize);
+
+    // 确保至少有一个步长
+    const finalAmount = steps * stepSize;
+
+    // 格式化为字符串，保留必要的精度但移除尾随零
+    const result = finalAmount.toString();
+
+    systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps})`);
+
+    return result;
+  }
+
+  /**
    * 等待
    */
   sleep(ms) {

@@ -185,18 +185,26 @@ class TickerWebSocket {
    */
   handleTickerUpdate(ticker) {
     const symbol = ticker.s; // e.g., 'BTCUSDT'
+
+    // 验证关键价格字段
+    const price = parseFloat(ticker.c);
+    if (isNaN(price)) {
+      systemLogger.error(`❌ 收到无效价格数据，跳过处理: symbol=${symbol}, price=${ticker.c}, ticker.c类型=${typeof ticker.c}`);
+      return;
+    }
+
     const data = {
       symbol,
-      price: parseFloat(ticker.c), // last price
-      change24h: parseFloat(ticker.p), // price change
-      changePercent24h: parseFloat(ticker.P), // price change percent
-      high24h: parseFloat(ticker.h), // high price
-      low24h: parseFloat(ticker.l), // low price
-      volume24h: parseFloat(ticker.v), // volume
-      quoteVolume24h: parseFloat(ticker.q), // quote volume
-      timestamp: ticker.E, // event time
+      price: price, // last price
+      change24h: parseFloat(ticker.p) || 0, // price change
+      changePercent24h: parseFloat(ticker.P) || 0, // price change percent
+      high24h: parseFloat(ticker.h) || 0, // high price
+      low24h: parseFloat(ticker.l) || 0, // low price
+      volume24h: parseFloat(ticker.v) || 0, // volume
+      quoteVolume24h: parseFloat(ticker.q) || 0, // quote volume
+      timestamp: ticker.E || Date.now(), // event time
       // 兼容性字段
-      price_change: parseFloat(ticker.P) // 同 changePercent24h
+      price_change: parseFloat(ticker.P) || 0 // 同 changePercent24h
     };
 
     // 更新缓存
@@ -296,15 +304,22 @@ class TickerWebSocket {
     const cleanSymbol = symbol.replace('/', '').replace(':USDT', '');
     const cachedData = this.tickerCache.get(cleanSymbol);
 
-    // 如果缓存中有数据且在30秒内，返回缓存数据
-    if (cachedData) {
-      const lastUpdateTime = this.lastUpdate.get(cleanSymbol);
-      if (Date.now() - lastUpdateTime < 30000) {
-        return cachedData;
-      }
+    // 添加详细调试日志
+    if (!cachedData) {
+      systemLogger.warn(`[getTicker] ${symbol}: 缓存中无数据`);
+      return null;
     }
 
-    // 缓存不存在或已过期，返回null让上层使用REST API
+    const lastUpdateTime = this.lastUpdate.get(cleanSymbol);
+    const age = Date.now() - lastUpdateTime;
+
+    // 如果缓存中有数据且在30秒内，返回缓存数据
+    if (age < 30000) {
+      return cachedData;
+    }
+
+    // 缓存已过期
+    systemLogger.warn(`[getTicker] ${symbol}: 缓存已过期 (age=${age}ms)`);
     return null;
   }
 

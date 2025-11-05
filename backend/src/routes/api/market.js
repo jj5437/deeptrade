@@ -29,11 +29,12 @@ router.get('/', async (req, res) => {
       systemLogger.info('使用WebSocket缓存获取市场数据');
       for (const symbol of symbols) {
         try {
-          const ticker = tradingEngine.tickerWebSocket.getTicker(symbol);
+          const ticker = await tradingEngine.tickerWebSocket.getTicker(symbol);
+         
           if (ticker) {
             // 验证数据有效性
             if (typeof ticker.price !== 'number' || isNaN(ticker.price)) {
-              systemLogger.warn(`${symbol} 价格数据无效，跳过`);
+              systemLogger.error(`❌ ${symbol} 价格数据无效: price=${ticker.price}, 类型=${typeof ticker.price}, ticker对象=${JSON.stringify(ticker)}`);
               continue;
             }
 
@@ -63,10 +64,6 @@ router.get('/', async (req, res) => {
 
             // 使用Map确保唯一性（以formattedSymbol为key）
             marketDataMap.set(formattedSymbol, marketDataItem);
-            systemLogger.debug(`获取市场数据: ${formattedSymbol} = ${ticker.price}`);
-          } else {
-            // 缓存未就绪，静默跳过
-            systemLogger.debug(`${symbol} WebSocket缓存未就绪，跳过`);
           }
         } catch (error) {
           // 静默处理错误
@@ -108,7 +105,7 @@ router.get('/:symbol', async (req, res) => {
 
     // 优先使用WebSocket缓存
     if (tradingEngine && tradingEngine.tickerWebSocket) {
-      const ticker = tradingEngine.tickerWebSocket.getTicker(symbol);
+      const ticker = await tradingEngine.tickerWebSocket.getTicker(symbol);
       if (ticker) {
         // 将symbol从 "ETHUSDT" 转换为 "ETH/USDT" 格式
         let formattedSymbol = ticker.symbol;
