@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  deeptrade-backend:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    env_file:
+      - .env
+    volumes:
+      - ./data:/usr/src/app/data
+      - ./logs:/usr/src/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - deeptrade-network
+
+  # 可选：添加Nginx作为反向代理
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - deeptrade-backend
+    restart: unless-stopped
+    networks:
+      - deeptrade-network
+
+networks:
+  deeptrade-network:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
