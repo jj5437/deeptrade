@@ -124,7 +124,12 @@ export const statsApi = {
     const response = await apiClient.get(`/stats/${symbol}`);
     return response.data.data;
   },
-  
+
+  getToday: async (): Promise<{ todayRealizedPnl: number }> => {
+    const response = await apiClient.get('/stats/today');
+    return response.data.data;
+  },
+
   update: async (symbol: string, stats: Partial<PerformanceStats>): Promise<void> => {
     await apiClient.post(`/stats/${symbol}`, stats);
   },

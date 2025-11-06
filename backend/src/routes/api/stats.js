@@ -7,6 +7,32 @@ function setDatabase(database) {
   db = database;
 }
 
+// 获取今日已实现盈亏
+router.get('/today', (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({
+        success: false,
+        error: '数据库未初始化'
+      });
+    }
+
+    const todayPnl = db.getTodayRealizedPnl();
+
+    res.json({
+      success: true,
+      data: {
+        todayRealizedPnl: todayPnl
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 router.get('/:symbol', (req, res) => {
   try {
     const { symbol } = req.params;

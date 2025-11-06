@@ -776,6 +776,42 @@ class TradingDatabase {
   }
 
   /**
+   * 获取今日已实现盈亏（从trade_logs表计算）
+   */
+  getTodayRealizedPnl() {
+    try {
+      // 获取今日00:00:00的时间戳
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayTimestamp = today.getTime();
+
+      const stmt = this.db.prepare(`
+        SELECT details FROM trade_logs
+        WHERE action = 'close_position' AND timestamp >= ?
+      `);
+
+      const logs = stmt.all(todayTimestamp);
+      let totalPnl = 0;
+
+      for (const log of logs) {
+        try {
+          const details = JSON.parse(log.details);
+          if (details.realized_pnl) {
+            totalPnl += parseFloat(details.realized_pnl);
+          }
+        } catch (e) {
+          // 忽略解析错误
+        }
+      }
+
+      return totalPnl;
+    } catch (error) {
+      systemLogger.error(`获取今日盈亏失败: ${error.message}`);
+      return 0;
+    }
+  }
+
+  /**
    * 更新性能统计
    */
   updatePerformanceStats(symbol, stats) {

@@ -5,7 +5,7 @@ import { AiStatusCard } from "@/components/dashboard/AiStatusCard";
 import { MarketOverviewCard } from "@/components/dashboard/MarketOverviewCard";
 import { RecentTradesCard } from "@/components/dashboard/RecentTradesCard";
 import { useDataStore } from "@/stores/dataStore";
-import { positionsApi, tradesApi, marketApi, accountApi, analysisApi } from "@/services/api";
+import { positionsApi, tradesApi, marketApi, accountApi, analysisApi, statsApi } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function Dashboard() {
@@ -18,6 +18,7 @@ export function Dashboard() {
     accuracy: 0,
     totalProfit: 0
   });
+  const [todayRealizedPnl, setTodayRealizedPnl] = useState(0);
 
   useEffect(() => {
     // 只有在用户已认证且不在加载中时才加载数据
@@ -41,12 +42,16 @@ export function Dashboard() {
           setMarketData(marketDataData);
           setAccountInfo(accountData);
 
-          // 加载AI统计数据
+          // 加载AI统计数据和今日盈亏
           try {
-            const statsData = await analysisApi.getStats();
+            const [statsData, todayPnlData] = await Promise.all([
+              analysisApi.getStats(),
+              statsApi.getToday()
+            ]);
             setAiStats(statsData);
+            setTodayRealizedPnl(todayPnlData.todayRealizedPnl);
           } catch (error) {
-            console.error("Failed to load AI stats:", error);
+            console.error("Failed to load stats:", error);
           }
 
           hasInitialLoad.current = true;
@@ -63,12 +68,16 @@ export function Dashboard() {
           setTrades(tradesData);
           setAccountInfo(accountData);
 
-          // 更新AI统计数据
+          // 更新AI统计数据和今日盈亏
           try {
-            const statsData = await analysisApi.getStats();
+            const [statsData, todayPnlData] = await Promise.all([
+              analysisApi.getStats(),
+              statsApi.getToday()
+            ]);
             setAiStats(statsData);
+            setTodayRealizedPnl(todayPnlData.todayRealizedPnl);
           } catch (error) {
-            console.error("Failed to load AI stats:", error);
+            console.error("Failed to load stats:", error);
           }
         }
       } catch (error) {
@@ -82,22 +91,19 @@ export function Dashboard() {
     return () => clearInterval(interval);
   }, [isAuthenticated, loading]); // 依赖于认证状态
 
-  // 从账户信息中获取未实现盈亏
-  const totalUnrealizedPnl = accountInfo?.activePositions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0) || 0;
-
-  // 构造PnL图表数据（模拟24小时数据）
+  // 构造今日盈亏图表数据（模拟24小时数据）
   const pnlChartData = [
     { value: 0, timestamp: Date.now() - 4 * 60 * 60 * 1000 },
-    { value: totalUnrealizedPnl * 0.3, timestamp: Date.now() - 3 * 60 * 60 * 1000 },
-    { value: totalUnrealizedPnl * 0.7, timestamp: Date.now() - 2 * 60 * 60 * 1000 },
-    { value: totalUnrealizedPnl, timestamp: Date.now() - 1 * 60 * 60 * 1000 },
+    { value: todayRealizedPnl * 0.3, timestamp: Date.now() - 3 * 60 * 60 * 1000 },
+    { value: todayRealizedPnl * 0.7, timestamp: Date.now() - 2 * 60 * 60 * 1000 },
+    { value: todayRealizedPnl, timestamp: Date.now() - 1 * 60 * 60 * 1000 },
   ];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
       <TotalBalanceCard accountInfo={accountInfo} />
 
-      <PnlCard pnl={totalUnrealizedPnl} data={pnlChartData} />
+      <PnlCard pnl={todayRealizedPnl} data={pnlChartData} />
 
       <AiStatusCard
         decisionsToday={aiStats.totalDecisions}
