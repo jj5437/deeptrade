@@ -500,21 +500,28 @@ class ExchangeUtils {
         return { amount: 5, price: 5 };
       }
 
-      systemLogger.info(`${symbol} 市场信息: ${JSON.stringify({ id: market.id, symbol: market.symbol, precision: market.precision })}`);
+      systemLogger.info(`${symbol} 市场信息: ${JSON.stringify({ id: market.id, symbol: market.symbol, precision: market.precision, limits: market.limits })}`);
 
       // CCXT在market.precision中提供精度信息
       const precision = market.precision || {};
+      const limits = market.limits || {};
 
-      // 对于Binance期货，通常 amount 的精度是 3-5 位小数，price 是 2-5 位小数
-      // 但我们需要从market.precision.amount获取实际的精度值
-      const amountPrecision = precision.amount || 5;
-      const pricePrecision = precision.price || 5;
+      // precision.amount/price 是步长（如 0.001），不是小数位数
+      // 我们需要获取实际的小数位数或使用limits
+      const stepSize = precision.amount || 0.00001;
+      const minAmount = limits.amount && limits.amount.min ? limits.amount.min : null;
+
+      systemLogger.info(`${symbol} 步长=${stepSize}, 最小数量=${minAmount}`);
+
+      // 对于格式化数量，我们直接使用步长作为最小单位
+      const amountPrecision = stepSize;
+      const pricePrecision = precision.price || 0.01;
 
       systemLogger.info(`${symbol} 精度: amount=${amountPrecision}, price=${pricePrecision}`);
 
       return {
         amount: amountPrecision,
-        price: pricePrecision
+        price: pricePrecision,
       };
     } catch (error) {
       systemLogger.warn(`获取${symbol}精度信息失败: ${error.message}，使用默认精度`);
@@ -526,28 +533,46 @@ class ExchangeUtils {
    * 根据交易对精度格式化数量
    */
   async formatAmountWithPrecision(symbol, amount) {
-    const precision = await this.getSymbolPrecision(symbol);
-    const stepSize = precision.amount;
+    try {
+      // 使用 CCXT 原生的精度处理方法
+      await exchange.loadMarkets();
+      const formattedSymbol = this.formatSymbol(symbol);
+      const market = exchange.markets[formattedSymbol];
 
-    // CCXT返回的precision.amount是最小交易单位（步长），不是小数位数
-    // 例如：0.001 意味着数量必须是0.001的倍数
+      if (!market) {
+        systemLogger.error(`未找到${symbol}的市场信息`);
+        return amount.toString();
+      }
 
-    // 计算步数
-    const steps = Math.round(amount / stepSize);
+      // 使用 market.amount 精度进行格式化
+      // 市场信息中的 precision.amount 是步长（如 0.001），我们需要根据它格式化
+      const stepSize = market.precision.amount;
 
-    // 确保至少有一个步长
-    const finalAmount = steps * stepSize;
+      // 计算步数并确保是整数
+      const steps = Math.floor(amount / stepSize);
 
-    // 计算步长的小数位数（0.0001 -> 4）
-    const stepSizeStr = stepSize.toString();
-    const decimalPlaces = stepSizeStr.includes('.') ? stepSizeStr.split('.')[1].length : 0;
+      // 确保至少有一个步长
+      const finalAmount = steps * stepSize;
 
-    // 使用toFixed格式化到正确的位数，避免浮点误差
-    const result = parseFloat(finalAmount.toFixed(decimalPlaces)).toString();
+      // 计算步长的小数位数
+      const stepSizeStr = stepSize.toString();
+      const decimalPlaces = stepSizeStr.includes('.') ? stepSizeStr.split('.')[1].length : 0;
 
-    systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps}, 小数位: ${decimalPlaces})`);
+      // 使用 toFixed 然后转换为字符串，以避免浮点误差
+      const result = Number(finalAmount.toFixed(decimalPlaces)).toString();
 
-    return result;
+      systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps})`);
+
+      return result;
+    } catch (error) {
+      // 如果格式化失败，回退到简单的方法
+      systemLogger.warn(`格式化失败，使用简单方法: ${error.message}`);
+
+      // 简单取整到2位小数
+      const result = Math.floor(amount * 100) / 100;
+
+      return result.toString();
+    }
   }
 
   /**

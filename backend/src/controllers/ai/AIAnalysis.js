@@ -202,6 +202,10 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
           max_tokens: 5000
         };
 
+        // 设置30秒超时
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
         const response = await fetch(`${env.ai.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -209,8 +213,11 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
             'Accept': 'application/json',
             'Authorization': `Bearer ${env.ai.deepseekApiKey}`
           },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -287,12 +294,15 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
         lastError = error;
 
         // 检查是否是网络错误（Premature close等）
-        const isNetworkError = error.message.includes('Premature close') ||
+        const isNetworkError = error.name === 'AbortError' ||
+                               error.message.includes('terminated') ||
+                               error.message.includes('Premature close') ||
                                error.message.includes('fetch') ||
                                error.message.includes('ECONNRESET') ||
                                error.message.includes('timeout') ||
                                error.message.includes('network') ||
-                               error.message.includes('ECONNABORTED');
+                               error.message.includes('ECONNABORTED') ||
+                               error.message.includes('aborted');
 
         if (isNetworkError) {
           if (attempt < this.maxRetries) {
