@@ -199,7 +199,7 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
             { role: 'user', content: fullPrompt }
           ],
           temperature: 0.7,
-          max_tokens: 4000  // 从1000增加到4000以避免截断
+          max_tokens: 5000
         };
 
         const response = await fetch(`${env.ai.baseUrl}/chat/completions`, {

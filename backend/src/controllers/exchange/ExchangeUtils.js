@@ -538,10 +538,14 @@ class ExchangeUtils {
     // 确保至少有一个步长
     const finalAmount = steps * stepSize;
 
-    // 格式化为字符串，保留必要的精度但移除尾随零
-    const result = finalAmount.toString();
+    // 计算步长的小数位数（0.0001 -> 4）
+    const stepSizeStr = stepSize.toString();
+    const decimalPlaces = stepSizeStr.includes('.') ? stepSizeStr.split('.')[1].length : 0;
 
-    systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps})`);
+    // 使用toFixed格式化到正确的位数，避免浮点误差
+    const result = parseFloat(finalAmount.toFixed(decimalPlaces)).toString();
+
+    systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps}, 小数位: ${decimalPlaces})`);
 
     return result;
   }
