@@ -661,7 +661,7 @@ class TradingEngine {
 
     try {
       // 计算开仓数量
-      const amount = env.trading.amountUsd / priceData.price;
+      const amount = env.trading.amountUsd * env.trading.leverage / priceData.price;
 
       // 使用交易所工具获取正确的精度格式化
       const formattedAmount = await exchangeUtils.formatAmountWithPrecision(symbol, amount);
