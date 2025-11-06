@@ -544,34 +544,82 @@ class ExchangeUtils {
         return amount.toString();
       }
 
-      // 使用 market.amount 精度进行格式化
-      // 市场信息中的 precision.amount 是步长（如 0.001），我们需要根据它格式化
-      const stepSize = market.precision.amount;
+      // 打印详细的市场信息用于调试
+      systemLogger.info(`${symbol} 完整市场信息: ${JSON.stringify({
+        symbol: market.symbol,
+        precision: market.precision,
+        limits: market.limits
+      })}`);
 
-      // 计算步数并确保是整数
-      const steps = Math.floor(amount / stepSize);
+      // 检查是否有amount的预定义方法
+      if (market.amount && typeof market.amount === 'function') {
+        const result = market.amount(amount);
+        systemLogger.info(`${symbol} 使用market.amount()格式化: ${amount} -> ${result}`);
+        return result.toString();
+      }
+
+      // 使用 precision.amount 作为步长
+      let stepSize = market.precision.amount;
+
+      // 如果是字符串，转换为数字
+      if (typeof stepSize === 'string') {
+        stepSize = parseFloat(stepSize);
+      }
+
+      // 如果没有precision.amount，尝试从limits.amount计算
+      if (!stepSize || stepSize === 0) {
+        if (market.limits.amount && market.limits.amount.step) {
+          stepSize = market.limits.amount.step;
+        } else {
+          // 默认步长
+          stepSize = 0.00001;
+          systemLogger.warn(`${symbol} 未找到步长，使用默认: ${stepSize}`);
+        }
+      }
+
+      // 计算步数 - 使用Math.round而不是Math.floor，避免数量过小的问题
+      let steps = Math.floor(amount / stepSize);
 
       // 确保至少有一个步长
-      const finalAmount = steps * stepSize;
+      if (steps === 0) {
+        steps = 1;
+      }
+
+      // 计算最终数量
+      let finalAmount = steps * stepSize;
 
       // 计算步长的小数位数
+      let decimalPlaces = 0;
       const stepSizeStr = stepSize.toString();
-      const decimalPlaces = stepSizeStr.includes('.') ? stepSizeStr.split('.')[1].length : 0;
 
-      // 使用 toFixed 然后转换为字符串，以避免浮点误差
-      const result = Number(finalAmount.toFixed(decimalPlaces)).toString();
+      if (stepSizeStr.includes('.')) {
+        decimalPlaces = stepSizeStr.split('.')[1].length;
+      }
 
-      systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps})`);
+      // 限制小数位数
+      finalAmount = parseFloat(finalAmount.toFixed(decimalPlaces));
+
+      // 确保不低于最小数量
+      if (market.limits.amount && market.limits.amount.min) {
+        if (finalAmount < market.limits.amount.min) {
+          finalAmount = market.limits.amount.min;
+          decimalPlaces = Math.max(decimalPlaces, 2);
+        }
+      }
+
+      const result = finalAmount.toFixed(decimalPlaces);
+
+      systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps}, 小数位数: ${decimalPlaces})`);
 
       return result;
     } catch (error) {
       // 如果格式化失败，回退到简单的方法
       systemLogger.warn(`格式化失败，使用简单方法: ${error.message}`);
 
-      // 简单取整到2位小数
-      const result = Math.floor(amount * 100) / 100;
+      // 简单取整到4位小数
+      const result = (Math.floor(amount * 10000) / 10000).toFixed(4);
 
-      return result.toString();
+      return result;
     }
   }
 

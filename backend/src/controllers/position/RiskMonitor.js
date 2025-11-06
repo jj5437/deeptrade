@@ -83,7 +83,6 @@ class RiskMonitor {
       }
 
       systemLogger.info(`风险检查: 检查 ${positions.length} 个持仓`);
-      systemLogger.info(`风险检查: 持仓列表: ${positions}`);
       // 并发检查所有持仓（带超时控制）
       const checkPromises = positions.map(position => this.checkPosition(position));
       await Promise.allSettled(checkPromises);
@@ -99,6 +98,8 @@ class RiskMonitor {
   async checkPosition(position) {
     try {
       const symbol = position.symbol;
+      const side = position.side;
+      systemLogger.info(`风险检查: 检查 ${symbol} ${side} 持仓`);
 
       // 获取当前价格（优先使用WebSocket缓存）
       let ticker = null;
@@ -163,24 +164,24 @@ class RiskMonitor {
     // 检查AI止盈（使用数据库字段名：ai_take_profit）
     const aiTakeProfit = position.ai_take_profit;
     if (aiTakeProfit && env.trading.takeProfitEnabled) {
-      if (position.side === 'long' && currentPrice >= aiTakeProfit) {
+      if (position.side === 'buy' && currentPrice >= aiTakeProfit) {
         return true;
       }
-      if (position.side === 'short' && currentPrice <= aiTakeProfit) {
+      if (position.side === 'sell' && currentPrice <= aiTakeProfit) {
         return true;
       }
     }
 
     // 检查固定百分比止盈（独立检查，即使有AI止盈也会检查）
     if (env.trading.takeProfitEnabled && env.trading.takeProfitPercentage > 0) {
-      const fixedTakeProfit = position.side === 'long'
+      const fixedTakeProfit = position.side === 'buy'
         ? position.entryPrice * (1 + env.trading.takeProfitPercentage)
         : position.entryPrice * (1 - env.trading.takeProfitPercentage);
 
-      if (position.side === 'long' && currentPrice >= fixedTakeProfit) {
+      if (position.side === 'buy' && currentPrice >= fixedTakeProfit) {
         return true;
       }
-      if (position.side === 'short' && currentPrice <= fixedTakeProfit) {
+      if (position.side === 'sell' && currentPrice <= fixedTakeProfit) {
         return true;
       }
     }
