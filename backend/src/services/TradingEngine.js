@@ -610,7 +610,8 @@ class TradingEngine {
       }
     }
 
-    // 第四层：固定止盈检查
+    // 第四层：止盈检查（独立执行，任意满足即止盈）
+    // AI动态止盈
     if (env.trading.takeProfitEnabled && signalData.takeProfit) {
       if (position.side === 'long' && currentPrice >= signalData.takeProfit) {
         systemLogger.info(`${position.symbol} 触发AI止盈，平仓`);
@@ -618,6 +619,22 @@ class TradingEngine {
       }
       if (position.side === 'short' && currentPrice <= signalData.takeProfit) {
         systemLogger.info(`${position.symbol} 触发AI止盈，平仓`);
+        return true;
+      }
+    }
+
+    // 固定百分比止盈（独立检查，即使AI提供了止盈也会检查）
+    if (env.trading.takeProfitEnabled && env.trading.takeProfitPercentage > 0) {
+      const fixedTakeProfit = position.side === 'long'
+        ? position.entryPrice * (1 + env.trading.takeProfitPercentage)
+        : position.entryPrice * (1 - env.trading.takeProfitPercentage);
+
+      if (position.side === 'long' && currentPrice >= fixedTakeProfit) {
+        systemLogger.info(`${position.symbol} 触发固定止盈（${(env.trading.takeProfitPercentage * 100).toFixed(2)}%），平仓`);
+        return true;
+      }
+      if (position.side === 'short' && currentPrice <= fixedTakeProfit) {
+        systemLogger.info(`${position.symbol} 触发固定止盈（${(env.trading.takeProfitPercentage * 100).toFixed(2)}%），平仓`);
         return true;
       }
     }
