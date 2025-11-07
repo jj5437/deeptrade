@@ -531,10 +531,11 @@ class ExchangeUtils {
 
   /**
    * 根据交易对精度格式化数量
+   * 优化版本 - 专门修复Binance精度问题
    */
   async formatAmountWithPrecision(symbol, amount) {
     try {
-      // 使用 CCXT 原生的精度处理方法
+      // 加载市场信息
       await exchange.loadMarkets();
       const formattedSymbol = this.formatSymbol(symbol);
       const market = exchange.markets[formattedSymbol];
@@ -551,17 +552,17 @@ class ExchangeUtils {
         limits: market.limits
       })}`);
 
-      // 检查是否有amount的预定义方法
+      // 优先使用CCXT原生的amount方法进行格式化（最准确）
       if (market.amount && typeof market.amount === 'function') {
         const result = market.amount(amount);
         systemLogger.info(`${symbol} 使用market.amount()格式化: ${amount} -> ${result}`);
         return result.toString();
       }
 
-      // 使用 precision.amount 作为步长
+      // 使用自定义逻辑进行精确格式化
       let stepSize = market.precision.amount;
 
-      // 如果是字符串，转换为数字
+      // 处理字符串类型的步长
       if (typeof stepSize === 'string') {
         stepSize = parseFloat(stepSize);
       }
@@ -571,13 +572,19 @@ class ExchangeUtils {
         if (market.limits.amount && market.limits.amount.step) {
           stepSize = market.limits.amount.step;
         } else {
-          // 默认步长
           stepSize = 0.00001;
           systemLogger.warn(`${symbol} 未找到步长，使用默认: ${stepSize}`);
         }
       }
 
-      // 计算步数 - 使用Math.round而不是Math.floor，避免数量过小的问题
+      // 计算步长的小数位数
+      let decimalPlaces = 0;
+      const stepSizeStr = stepSize.toString();
+      if (stepSizeStr.includes('.')) {
+        decimalPlaces = stepSizeStr.split('.')[1].length;
+      }
+
+      // 计算步数 - 使用Math.floor确保不超出目标数量
       let steps = Math.floor(amount / stepSize);
 
       // 确保至少有一个步长
@@ -588,28 +595,47 @@ class ExchangeUtils {
       // 计算最终数量
       let finalAmount = steps * stepSize;
 
-      // 计算步长的小数位数
-      let decimalPlaces = 0;
-      const stepSizeStr = stepSize.toString();
-
-      if (stepSizeStr.includes('.')) {
-        decimalPlaces = stepSizeStr.split('.')[1].length;
+      // 特殊处理：使用toFixed确保严格的小数位数限制
+      // 这对Binance等交易所特别重要
+      if (decimalPlaces > 0) {
+        finalAmount = parseFloat(finalAmount.toFixed(decimalPlaces));
       }
-
-      // 限制小数位数
-      finalAmount = parseFloat(finalAmount.toFixed(decimalPlaces));
 
       // 确保不低于最小数量
       if (market.limits.amount && market.limits.amount.min) {
-        if (finalAmount < market.limits.amount.min) {
-          finalAmount = market.limits.amount.min;
-          decimalPlaces = Math.max(decimalPlaces, 2);
+        const minAmount = market.limits.amount.min;
+        if (finalAmount < minAmount) {
+          // 如果低于最小值，设置为最小值
+          finalAmount = minAmount;
+          // 确保小数位数足够表示最小值
+          const minDecimalPlaces = minAmount.toString().includes('.')
+            ? minAmount.toString().split('.')[1].length
+            : 0;
+          decimalPlaces = Math.max(decimalPlaces, minDecimalPlaces);
         }
       }
 
-      const result = finalAmount.toFixed(decimalPlaces);
+      // 最终格式化：使用toFixed严格限制小数位数
+      let result;
+      if (decimalPlaces > 0) {
+        result = finalAmount.toFixed(decimalPlaces);
+      } else {
+        result = finalAmount.toString();
+      }
+
+      // 移除尾部多余的零
+      if (result.includes('.')) {
+        result = result.replace(/\.?0+$/, '');
+      }
 
       systemLogger.info(`${symbol} 数量格式化: ${amount} -> ${result} (步长: ${stepSize}, 步数: ${steps}, 小数位数: ${decimalPlaces})`);
+
+      // 验证格式化后的数量是否有效
+      const verifyAmount = parseFloat(result);
+      if (isNaN(verifyAmount) || verifyAmount <= 0) {
+        systemLogger.error(`${symbol} 格式化后的数量无效: ${result}，使用原始值`);
+        return amount.toString();
+      }
 
       return result;
     } catch (error) {

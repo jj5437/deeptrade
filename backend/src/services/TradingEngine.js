@@ -663,6 +663,7 @@ class TradingEngine {
 
   /**
    * 开仓 - 完全参照ExchangeUtils.closePosition()的逻辑
+   * 优化版本 - 添加精度错误重试机制
    */
   async openPosition(symbol, side, priceData, signalData) {
     // 先转换symbol格式
@@ -680,17 +681,69 @@ class TradingEngine {
       // 计算开仓数量
       const amount = env.trading.amountUsd * env.trading.leverage / priceData.price;
 
-      // 使用交易所工具获取正确的精度格式化
-      const formattedAmount = await exchangeUtils.formatAmountWithPrecision(symbol, amount);
+      // 币种特定精度配置
+      const symbolPrecisionMap = {
+        'BTC/USDT': { decimals: 5, minAmount: 0.001 },
+        'ETH/USDT': { decimals: 4, minAmount: 0.01 },
+        'SOL/USDT': { decimals: 3, minAmount: 0.01 },
+        'XRP/USDT': { decimals: 1, minAmount: 1 },
+        'BNB/USDT': { decimals: 4, minAmount: 0.01 },
+        'ADA/USDT': { decimals: 1, minAmount: 1 },
+        'DOGE/USDT': { decimals: 0, minAmount: 100 },
+        'MATIC/USDT': { decimals: 1, minAmount: 1 },
+        'DOT/USDT': { decimals: 2, minAmount: 0.1 },
+        'AVAX/USDT': { decimals: 3, minAmount: 0.01 },
+        'LINK/USDT': { decimals: 2, minAmount: 0.1 },
+        'UNI/USDT': { decimals: 2, minAmount: 0.1 },
+        'LTC/USDT': { decimals: 4, minAmount: 0.01 },
+        'BCH/USDT': { decimals: 4, minAmount: 0.01 },
+        'XLM/USDT': { decimals: 1, minAmount: 1 },
+        'VET/USDT': { decimals: 1, minAmount: 1 },
+        'FIL/USDT': { decimals: 3, minAmount: 0.01 },
+        'TRX/USDT': { decimals: 1, minAmount: 1 },
+        'EOS/USDT': { decimals: 2, minAmount: 0.1 },
+        'XMR/USDT': { decimals: 4, minAmount: 0.01 },
+        'ALGO/USDT': { decimals: 2, minAmount: 0.1 },
+        'ATOM/USDT': { decimals: 3, minAmount: 0.01 },
+        'FTM/USDT': { decimals: 1, minAmount: 1 },
+        'NEAR/USDT': { decimals: 2, minAmount: 0.1 },
+        'SUI/USDT': { decimals: 2, minAmount: 0.1 },
+        'APT/USDT': { decimals: 3, minAmount: 0.01 },
+        'ARB/USDT': { decimals: 2, minAmount: 0.1 },
+        'OP/USDT': { decimals: 2, minAmount: 0.1 },
+        'WIF/USDT': { decimals: 3, minAmount: 0.01 },
+        'PEPE/USDT': { decimals: 0, minAmount: 1000000 },
+        'SHIB/USDT': { decimals: 0, minAmount: 1000000 },
+        'FLOKI/USDT': { decimals: 0, minAmount: 100000 }
+      };
 
-      systemLogger.info(`📋 尝试开仓: symbol=${binanceSymbol}, side=${orderSide}, quantity=${formattedAmount}, leverage=${env.trading.leverage}`);
+      let formattedAmount;
+      const precision = symbolPrecisionMap[symbol] || { decimals: 4, minAmount: 0.01 };
+
+      // 最简单直接的方法：使用币种特定精度
+      const multiplier = Math.pow(10, precision.decimals);
+      const flooredAmount = Math.floor(amount * multiplier) / multiplier;
+
+      // 确保不低于最小交易量
+      const finalAmount = Math.max(flooredAmount, precision.minAmount);
+      formattedAmount = finalAmount.toFixed(precision.decimals);
+
+      // 移除尾部零
+      if (formattedAmount.includes('.')) {
+        formattedAmount = formattedAmount.replace(/\.?0+$/, '');
+      }
+
+      systemLogger.info(`${symbol} 使用币种特定精度: ${amount} -> ${formattedAmount} (精度:${precision.decimals}, 最小:${precision.minAmount})`);
+
+      const numericAmount = parseFloat(formattedAmount);
+      systemLogger.info(`📋 尝试开仓: symbol=${binanceSymbol}, side=${orderSide}, quantity=${numericAmount}, leverage=${env.trading.leverage}`);
 
       // 完全参照closePosition的下单逻辑
       const orderParams = {
         symbol: binanceSymbol,
         side: orderSide,
         type: 'MARKET',
-        quantity: formattedAmount,
+        quantity: numericAmount,
         leverage: env.trading.leverage.toString(),
         marginMode: 'ISOLATED',
         positionSide: side.toUpperCase() // LONG 或 SHORT
@@ -746,6 +799,152 @@ class TradingEngine {
       };
     } catch (error) {
       systemLogger.error(`${symbol} 开仓失败: ${error.message}`);
+
+      // 特殊处理：精度错误时尝试重新格式化
+      if (error.message && (error.message.includes('Precision is over the maximum') || error.code === -1111)) {
+        systemLogger.warn(`${symbol} 检测到精度错误，使用最严格精度重试...`);
+
+        try {
+          // 重新计算并格式化数量
+          const amount = env.trading.amountUsd * env.trading.leverage / priceData.price;
+
+          // 最简单直接的方法：直接使用交易所原生方法强制格式化
+          await exchange.loadMarkets();
+          const formattedSymbol = symbol.replace('/', '').replace(':USDT', '');
+          const market = exchange.markets[formattedSymbol];
+
+          if (market && market.amount) {
+            // 使用CCXT原生方法强制格式化
+            const conservativeFormatted = market.amount(amount);
+            const conservativeStr = conservativeFormatted.toString();
+
+            systemLogger.info(`${symbol} 精度重试: 原值=${amount}, 强制格式化=${conservativeStr}`);
+
+            // 重试下单
+            const retryOrderParams = {
+              symbol: binanceSymbol,
+              side: orderSide,
+              type: 'MARKET',
+              quantity: parseFloat(conservativeStr),
+              leverage: env.trading.leverage.toString(),
+              marginMode: 'ISOLATED',
+              positionSide: side.toUpperCase()
+            };
+
+            const order = await exchange.fapiPrivatePostOrder(retryOrderParams);
+
+            // 保存到数据库
+            const amountForDb = parseFloat(conservativeStr);
+            this.db.savePosition({
+              symbol,
+              side: orderSideLower,
+              size: amountForDb,
+              entryPrice: priceData.price,
+              entryTime: new Date().toISOString(),
+              aiStopLoss: signalData.stopLoss,
+              aiTakeProfit: signalData.takeProfit,
+              leverage: env.trading.leverage,
+              margin: amountForDb / env.trading.leverage
+            });
+
+            this.db.addTradeLog({
+              symbol,
+              action: 'open_position',
+              side: orderSideLower,
+              size: amountForDb,
+              price: priceData.price,
+              details: {
+                leverage: env.trading.leverage,
+                take_profit_price: signalData.takeProfit,
+                stop_loss_price: signalData.stopLoss
+              },
+              message: `开仓（精度重试）: ${signalData.reason}`,
+              success: true
+            });
+
+            systemLogger.info(`${symbol} 精度重试开仓成功: ${side} ${amountForDb}`);
+
+            // 清除缓存
+            positionCache.clear(symbol);
+
+            return {
+              success: true,
+              id: order.orderId,
+              symbol: symbol,
+              side: side,
+              amount: amountForDb,
+              type: 'market',
+              price: priceData.price,
+              timestamp: order.transactTime || Date.now(),
+              exchange_result: order
+            };
+          } else {
+            // 如果没有market.amount，使用最严格的方法：直接取整到5位小数
+            const ultraConservative = Math.floor(amount * 100000) / 100000;
+            const ultraStr = ultraConservative.toFixed(5).replace(/\.?0+$/, '');
+
+            systemLogger.info(`${symbol} 超严格重试: 原值=${amount}, 超严格格式化=${ultraStr}`);
+
+            const retryOrderParams = {
+              symbol: binanceSymbol,
+              side: orderSide,
+              type: 'MARKET',
+              quantity: parseFloat(ultraStr),
+              leverage: env.trading.leverage.toString(),
+              marginMode: 'ISOLATED',
+              positionSide: side.toUpperCase()
+            };
+
+            const order = await exchange.fapiPrivatePostOrder(retryOrderParams);
+
+            const amountForDb = parseFloat(ultraStr);
+            this.db.savePosition({
+              symbol,
+              side: orderSideLower,
+              size: amountForDb,
+              entryPrice: priceData.price,
+              entryTime: new Date().toISOString(),
+              aiStopLoss: signalData.stopLoss,
+              aiTakeProfit: signalData.takeProfit,
+              leverage: env.trading.leverage,
+              margin: amountForDb / env.trading.leverage
+            });
+
+            this.db.addTradeLog({
+              symbol,
+              action: 'open_position',
+              side: orderSideLower,
+              size: amountForDb,
+              price: priceData.price,
+              details: {
+                leverage: env.trading.leverage,
+                take_profit_price: signalData.takeProfit,
+                stop_loss_price: signalData.stopLoss
+              },
+              message: `开仓（超严格重试）: ${signalData.reason}`,
+              success: true
+            });
+
+            systemLogger.info(`${symbol} 超严格重试开仓成功: ${side} ${amountForDb}`);
+            positionCache.clear(symbol);
+
+            return {
+              success: true,
+              id: order.orderId,
+              symbol: symbol,
+              side: side,
+              amount: amountForDb,
+              type: 'market',
+              price: priceData.price,
+              timestamp: order.transactTime || Date.now(),
+              exchange_result: order
+            };
+          }
+        } catch (retryError) {
+          systemLogger.error(`${symbol} 精度重试也失败: ${retryError.message}`);
+        }
+      }
+
       this.db.addTradeLog({
         symbol,
         action: 'open_position',
