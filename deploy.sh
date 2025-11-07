@@ -50,7 +50,7 @@ check_docker() {
         exit 1
     fi
 
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    if ! command -v docker compose &> /dev/null && ! docker compose version &> /dev/null; then
         print_error "Docker Compose未安装！请先安装Docker Compose："
         echo "  https://docs.docker.com/compose/install/"
         exit 1
@@ -111,14 +111,14 @@ check_env_files() {
 # 构建镜像
 build_images() {
     print_info "构建Docker镜像..."
-    docker-compose build --no-cache
+    docker compose build --no-cache
     print_success "镜像构建完成"
 }
 
 # 启动服务
 start_services() {
     print_info "启动DeepTrade服务..."
-    docker-compose up -d
+    docker compose up -d
     print_success "服务启动完成"
 }
 
@@ -135,7 +135,7 @@ wait_for_services() {
         fi
         if [ $i -eq 30 ]; then
             print_error "后端服务启动超时"
-            docker-compose logs backend
+            docker compose logs backend
             exit 1
         fi
         echo -n "."
@@ -186,29 +186,29 @@ show_access_info() {
 
 # 查看日志
 show_logs() {
-    docker-compose logs -f
+    docker compose logs -f
 }
 
 # 停止服务
 stop_services() {
     print_info "停止DeepTrade服务..."
-    docker-compose down
+    docker compose down
     print_success "服务已停止"
 }
 
 # 重启服务
 restart_services() {
     print_info "重启DeepTrade服务..."
-    docker-compose restart
+    docker compose restart
     print_success "服务已重启"
 }
 
 # 重新部署
 redeploy() {
     print_info "重新部署DeepTrade..."
-    docker-compose down
-    docker-compose build --no-cache
-    docker-compose up -d
+    docker compose down
+    docker compose build --no-cache
+    docker compose up -d
     wait_for_services
     show_access_info
 }
@@ -216,7 +216,7 @@ redeploy() {
 # 查看状态
 show_status() {
     print_info "服务状态："
-    docker-compose ps
+    docker compose ps
     echo ""
     print_info "资源使用："
     docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}"
@@ -228,7 +228,7 @@ clean_data() {
     read -r response
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         print_info "清理数据..."
-        docker-compose down -v
+        docker compose down -v
         docker system prune -af
         print_success "数据清理完成"
     else

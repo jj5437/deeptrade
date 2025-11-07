@@ -1,6 +1,14 @@
 # 使用官方Node.js运行时作为父镜像
 FROM node:18-alpine
 
+# 安装Python和build工具（用于编译tulind等原生模块）
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    make \
+    g++ \
+    && ln -sf python3 /usr/bin/python
+
 # 设置工作目录
 WORKDIR /usr/src/app
 
