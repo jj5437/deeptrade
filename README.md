@@ -344,7 +344,194 @@ tail -f logs/system_*.log | grep 风险检查
 
 ## 🚢 部署指南
 
-### PM2部署
+### 方式一：Docker一键部署（推荐）
+
+使用Docker Compose实现前后端 + Nginx反向代理的一键部署，支持HTTPS配置。
+
+#### 前置要求
+- Docker ≥ 20.0.0
+- Docker Compose ≥ 2.0.0
+- 域名（生产环境推荐）
+
+#### 快速部署
+
+1. **克隆项目并配置**
+```bash
+git clone https://github.com/jj5437/deeptrade.git
+cd deeptrade
+```
+
+2. **配置环境变量**
+```bash
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑配置文件
+vim .env
+# 设置您的域名和端口
+
+# 配置后端API密钥
+cp backend/.env.example backend/.env
+vim backend/.env
+# 填入DeepSeek API密钥和交易所API密钥
+
+# 配置前端（可选）
+cp frontend/.env.example frontend/.env
+```
+
+3. **一键部署**
+```bash
+# 使用部署脚本
+./deploy.sh
+
+# 或手动部署
+docker-compose up -d
+```
+
+4. **验证部署**
+```bash
+# 查看服务状态
+./deploy.sh status
+
+# 查看日志
+./deploy.sh logs
+```
+
+5. **访问应用**
+- 前端地址：http://localhost:80
+- API地址：http://localhost:80/api
+- WebSocket：ws://localhost:80/ws
+
+#### 常用管理命令
+
+```bash
+# 部署服务
+./deploy.sh
+
+# 查看日志
+./deploy.sh logs
+
+# 停止服务
+./deploy.sh stop
+
+# 重启服务
+./deploy.sh restart
+
+# 重新部署
+./deploy.sh redeploy
+
+# 查看状态
+./deploy.sh status
+
+# 清理数据（危险操作）
+./deploy.sh clean
+```
+
+#### 配置HTTPS（生产环境）
+
+详细步骤请参考：[nginx/ssl/README.md](nginx/ssl/README.md)
+
+快速配置：
+```bash
+# 1. 获取SSL证书（Let's Encrypt）
+sudo certbot certonly --standalone -d your-domain.com
+
+# 2. 复制证书到项目目录
+sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem ./nginx/ssl/cert.pem
+sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem ./nginx/ssl/key.pem
+
+# 3. 编辑 .env 启用HTTPS
+echo "ENABLE_HTTPS=true" >> .env
+
+# 4. 更新nginx配置中的域名
+vim nginx/nginx.conf
+# 将 your-domain.com 替换为实际域名
+
+# 5. 重启服务
+./deploy.sh restart
+```
+
+#### 目录结构
+
+```
+deeptrade/
+├── docker-compose.yml      # Docker Compose配置
+├── deploy.sh              # 一键部署脚本
+├── .env                    # 全局环境变量
+├── .env.example           # 环境变量模板
+├── nginx/                 # Nginx配置
+│   ├── nginx.conf         # 反向代理配置
+│   └── ssl/              # SSL证书目录
+│       ├── cert.pem      # 证书文件
+│       ├── key.pem       # 私钥文件
+│       └── README.md     # SSL配置说明
+├── backend/
+│   ├── .env              # 后端环境变量
+│   └── Dockerfile        # 后端镜像构建文件
+└── frontend/
+    ├── .env              # 前端环境变量
+    └── Dockerfile        # 前端镜像构建文件
+```
+
+#### Docker架构
+
+```
+┌─────────────────────────────────────┐
+│            Nginx (Port 80/443)      │
+│        反向代理 + SSL + 负载均衡       │
+└──────────────┬──────────────────────┘
+               │
+       ┌───────┴───────┐
+       │               │
+┌──────▼──────┐  ┌─────▼──────┐
+│  Frontend   │  │  Backend   │
+│   (React)   │  │ (Node.js)  │
+│   Port: 80  │  │  Port:8080 │
+└─────────────┘  └────────────┘
+                      │
+               ┌──────▼──────┐
+               │  SQLite DB  │
+               │  (Volume)   │
+               └─────────────┘
+```
+
+#### 故障排除
+
+**问题1：端口被占用**
+```bash
+# 方案1：修改 .env 中的端口配置
+NGINX_HTTP_PORT=8080
+
+# 方案2：停止占用端口的进程
+lsof -ti:80 | xargs kill
+```
+
+**问题2：后端启动失败**
+```bash
+# 查看后端日志
+./deploy.sh logs backend
+
+# 检查后端环境变量
+docker-compose exec backend cat backend/.env
+```
+
+**问题3：前端无法访问后端**
+```bash
+# 检查网络连接
+docker network ls
+docker-compose exec frontend wget -q http://backend:8080/health
+
+# 检查nginx配置
+docker-compose exec nginx nginx -t
+```
+
+**问题4：数据库权限错误**
+```bash
+# 修复数据目录权限
+sudo chown -R 1001:1001 backend/data
+```
+
+### 方式二：PM2部署
 
 ```bash
 # 安装PM2
