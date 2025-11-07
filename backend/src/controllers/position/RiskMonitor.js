@@ -124,6 +124,8 @@ class RiskMonitor {
       if (this.shouldTakeProfit(position, currentPrice)) {
         const aiTakeProfit = position.ai_take_profit;
         systemLogger.info(`🚨 [RiskMonitor] ${symbol} 触发快速止盈 (AI止盈: ${aiTakeProfit})，当前价格: ${currentPrice}`);
+        // 设置当前价格到position对象
+        position.currentPrice = currentPrice;
         const result = await this.positionManager.closePosition(position, 'quick_take_profit', this.db);
         if (result.success) {
           systemLogger.info(`✅ ${symbol} 快速止盈成功，PnL: ${result.pnl}`);
@@ -135,6 +137,8 @@ class RiskMonitor {
       if (this.shouldAiStopLoss(position, currentPrice)) {
         const aiStopLoss = position.ai_stop_loss;
         systemLogger.info(`🚨 [RiskMonitor] ${symbol} 触发AI快速止损 (AI止损: ${aiStopLoss})，当前价格: ${currentPrice}`);
+        // 设置当前价格到position对象
+        position.currentPrice = currentPrice;
         const result = await this.positionManager.closePosition(position, 'quick_ai_stop_loss', this.db);
         if (result.success) {
           systemLogger.info(`✅ ${symbol} AI快速止损成功，PnL: ${result.pnl}`);
@@ -145,6 +149,8 @@ class RiskMonitor {
       // 检查止损条件（传统5%止损）
       if (this.shouldStopLoss(position, currentPrice)) {
         systemLogger.info(`🚨 [RiskMonitor] ${symbol} 触发快速止损，当前价格: ${currentPrice}`);
+        // 设置当前价格到position对象
+        position.currentPrice = currentPrice;
         const result = await this.positionManager.closePosition(position, 'quick_stop_loss', this.db);
         if (result.success) {
           systemLogger.info(`✅ ${symbol} 快速止损成功，PnL: ${result.pnl}`);

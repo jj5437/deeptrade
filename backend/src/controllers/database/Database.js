@@ -442,24 +442,41 @@ class TradingDatabase {
             const wsTickerData = await this.tickerWebSocket.getTicker(symbol);
             if (wsTickerData) {
               closePrice = wsTickerData.price;
+              systemLogger.info(`${symbol} 使用WebSocket缓存价格，平仓价格: ${closePrice}`);
             }
           }
 
-          // 如果WebSocket缓存未就绪，使用开仓价格（不记录错误）
+          // 如果WebSocket缓存未就绪，尝试使用交易所API获取价格
+          if (!closePrice && this.exchangeUtils) {
+            try {
+              const exchangeSymbol = symbol.includes(':') ? symbol : `${symbol}:USDT`;
+              const ticker = await this.exchangeUtils.getTicker(exchangeSymbol);
+              if (ticker && ticker.price) {
+                closePrice = ticker.price;
+                systemLogger.info(`${symbol} 使用交易所API获取价格，平仓价格: ${closePrice}`);
+              }
+            } catch (apiError) {
+              systemLogger.warn(`获取${symbol}交易所价格失败: ${apiError.message}`);
+            }
+          }
+
+          // 如果仍然无法获取价格，抛出错误而不是使用开仓价格
           if (!closePrice) {
-            systemLogger.warn(`${symbol} WebSocket缓存未就绪，使用开仓价格作为平仓价格`);
-            closePrice = dbPosition.entry_price;
+            const errorMsg = `无法获取平仓价格，请检查网络连接或WebSocket状态。symbol=${symbol}`;
+            systemLogger.error(errorMsg);
+            throw new Error(errorMsg);
           }
         } catch (error) {
-          // 静默处理错误，使用开仓价格
-          systemLogger.warn(`获取${symbol}平仓价格失败，使用开仓价格: ${error.message}`);
-          closePrice = dbPosition.entry_price;
+          // 抛出错误而不是静默处理
+          throw new Error(`获取${symbol}平仓价格失败: ${error.message}`);
         }
       }
 
-      // 如果仍未获取到价格，使用开仓价格
-      if (!closePrice) {
-        closePrice = dbPosition.entry_price;
+      // 验证价格是否有效
+      if (!closePrice || closePrice <= 0) {
+        const errorMsg = `平仓价格无效: ${closePrice} (symbol=${symbol})`;
+        systemLogger.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       const pnl = (closePrice - dbPosition.entry_price) * dbPosition.size;

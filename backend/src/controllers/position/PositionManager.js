@@ -64,14 +64,35 @@ class PositionManager {
         );
       }
 
+      // 尝试获取平仓价格
+      let closePrice = null;
+      if (position.currentPrice && position.currentPrice > 0) {
+        closePrice = position.currentPrice;
+        systemLogger.info(`${symbol} 使用传入的平仓价格: ${closePrice}`);
+      } else {
+        systemLogger.warn(`${symbol} position.currentPrice 无效，尝试重新获取价格`);
+        // 尝试从WebSocket或交易所API获取价格
+        if (db && db.tickerWebSocket) {
+          try {
+            const wsTickerData = await db.tickerWebSocket.getTicker(exchangeSymbol);
+            if (wsTickerData && wsTickerData.price > 0) {
+              closePrice = wsTickerData.price;
+              systemLogger.info(`${symbol} 从WebSocket获取到平仓价格: ${closePrice}`);
+            }
+          } catch (error) {
+            systemLogger.warn(`从WebSocket获取${symbol}价格失败: ${error.message}`);
+          }
+        }
+      }
+
       // 更新数据库（只更新记录，不调用交易所）
       if (db) {
         // 使用格式化后的 symbol（数据库中存储的是简化格式）
         const dbSymbol = this.formatSymbol(symbol);
-        db.closePositionBySymbol(dbSymbol, position.currentPrice || 0, reason);
+        db.closePositionBySymbol(dbSymbol, closePrice, reason);
       }
 
-      const pnl = this.calculatePnL(position, position.currentPrice || 0);
+      const pnl = this.calculatePnL(position, closePrice || position.currentPrice || 0);
       systemLogger.info(`${symbol} 平仓成功: PnL=${pnl.toFixed(2)} USDT`);
       return { success: true, pnl, exchangeResult };
     } catch (error) {

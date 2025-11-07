@@ -537,6 +537,8 @@ class TradingEngine {
 
       for (const position of positions) {
         const currentPrice = priceData.price;
+        // 设置当前价格到position对象
+        position.currentPrice = currentPrice;
 
         // 多层风险控制检查
         const shouldClose = await this.checkRiskControls(position, priceData, signalData);
@@ -677,78 +679,78 @@ class TradingEngine {
     const orderSide = side === 'long' ? 'BUY' : 'SELL';
     const orderSideLower = orderSide.toLowerCase();
 
+    // 计算开仓数量
+    const amount = env.trading.amountUsd * env.trading.leverage / priceData.price;
+
+    // 币种特定精度配置 - 调整ETH/USDT为更安全的精度
+    const symbolPrecisionMap = {
+      'BTC/USDT': { decimals: 5, minAmount: 0.001 },
+      'ETH/USDT': { decimals: 3, minAmount: 0.001 }, // 从4位调整为3位，更安全
+      'SOL/USDT': { decimals: 2, minAmount: 0.01 },
+      'XRP/USDT': { decimals: 1, minAmount: 1 },
+      'BNB/USDT': { decimals: 4, minAmount: 0.01 },
+      'ADA/USDT': { decimals: 1, minAmount: 1 },
+      'DOGE/USDT': { decimals: 0, minAmount: 100 },
+      'MATIC/USDT': { decimals: 1, minAmount: 1 },
+      'DOT/USDT': { decimals: 2, minAmount: 0.1 },
+      'AVAX/USDT': { decimals: 3, minAmount: 0.01 },
+      'LINK/USDT': { decimals: 2, minAmount: 0.1 },
+      'UNI/USDT': { decimals: 2, minAmount: 0.1 },
+      'LTC/USDT': { decimals: 4, minAmount: 0.01 },
+      'BCH/USDT': { decimals: 4, minAmount: 0.01 },
+      'XLM/USDT': { decimals: 1, minAmount: 1 },
+      'VET/USDT': { decimals: 1, minAmount: 1 },
+      'FIL/USDT': { decimals: 3, minAmount: 0.01 },
+      'TRX/USDT': { decimals: 1, minAmount: 1 },
+      'EOS/USDT': { decimals: 2, minAmount: 0.1 },
+      'XMR/USDT': { decimals: 4, minAmount: 0.01 },
+      'ALGO/USDT': { decimals: 2, minAmount: 0.1 },
+      'ATOM/USDT': { decimals: 3, minAmount: 0.01 },
+      'FTM/USDT': { decimals: 1, minAmount: 1 },
+      'NEAR/USDT': { decimals: 2, minAmount: 0.1 },
+      'SUI/USDT': { decimals: 2, minAmount: 0.1 },
+      'APT/USDT': { decimals: 3, minAmount: 0.01 },
+      'ARB/USDT': { decimals: 2, minAmount: 0.1 },
+      'OP/USDT': { decimals: 2, minAmount: 0.1 },
+      'WIF/USDT': { decimals: 3, minAmount: 0.01 },
+      'PEPE/USDT': { decimals: 0, minAmount: 1000000 },
+      'SHIB/USDT': { decimals: 0, minAmount: 1000000 },
+      'FLOKI/USDT': { decimals: 0, minAmount: 100000 }
+    };
+
+    let formattedAmount;
+    const precision = symbolPrecisionMap[symbol] || { decimals: 4, minAmount: 0.01 };
+
+    // 最简单直接的方法：使用币种特定精度
+    const multiplier = Math.pow(10, precision.decimals);
+    const flooredAmount = Math.floor(amount * multiplier) / multiplier;
+
+    // 确保不低于最小交易量
+    const finalAmount = Math.max(flooredAmount, precision.minAmount);
+    formattedAmount = finalAmount.toFixed(precision.decimals);
+
+    // 移除尾部零
+    if (formattedAmount.includes('.')) {
+      formattedAmount = formattedAmount.replace(/\.?0+$/, '');
+    }
+
+    systemLogger.info(`${symbol} 使用币种特定精度: ${amount} -> ${formattedAmount} (精度:${precision.decimals}, 最小:${precision.minAmount})`);
+
+    const numericAmount = parseFloat(formattedAmount);
+    systemLogger.info(`📋 尝试开仓: symbol=${binanceSymbol}, side=${orderSide}, quantity=${numericAmount}, leverage=${env.trading.leverage}`);
+
+    // 完全参照closePosition的下单逻辑
+    const orderParams = {
+      symbol: binanceSymbol,
+      side: orderSide,
+      type: 'MARKET',
+      quantity: numericAmount,
+      leverage: env.trading.leverage.toString(),
+      marginMode: 'ISOLATED',
+      positionSide: side.toUpperCase() // LONG 或 SHORT
+    };
+
     try {
-      // 计算开仓数量
-      const amount = env.trading.amountUsd * env.trading.leverage / priceData.price;
-
-      // 币种特定精度配置
-      const symbolPrecisionMap = {
-        'BTC/USDT': { decimals: 5, minAmount: 0.001 },
-        'ETH/USDT': { decimals: 4, minAmount: 0.01 },
-        'SOL/USDT': { decimals: 3, minAmount: 0.01 },
-        'XRP/USDT': { decimals: 1, minAmount: 1 },
-        'BNB/USDT': { decimals: 4, minAmount: 0.01 },
-        'ADA/USDT': { decimals: 1, minAmount: 1 },
-        'DOGE/USDT': { decimals: 0, minAmount: 100 },
-        'MATIC/USDT': { decimals: 1, minAmount: 1 },
-        'DOT/USDT': { decimals: 2, minAmount: 0.1 },
-        'AVAX/USDT': { decimals: 3, minAmount: 0.01 },
-        'LINK/USDT': { decimals: 2, minAmount: 0.1 },
-        'UNI/USDT': { decimals: 2, minAmount: 0.1 },
-        'LTC/USDT': { decimals: 4, minAmount: 0.01 },
-        'BCH/USDT': { decimals: 4, minAmount: 0.01 },
-        'XLM/USDT': { decimals: 1, minAmount: 1 },
-        'VET/USDT': { decimals: 1, minAmount: 1 },
-        'FIL/USDT': { decimals: 3, minAmount: 0.01 },
-        'TRX/USDT': { decimals: 1, minAmount: 1 },
-        'EOS/USDT': { decimals: 2, minAmount: 0.1 },
-        'XMR/USDT': { decimals: 4, minAmount: 0.01 },
-        'ALGO/USDT': { decimals: 2, minAmount: 0.1 },
-        'ATOM/USDT': { decimals: 3, minAmount: 0.01 },
-        'FTM/USDT': { decimals: 1, minAmount: 1 },
-        'NEAR/USDT': { decimals: 2, minAmount: 0.1 },
-        'SUI/USDT': { decimals: 2, minAmount: 0.1 },
-        'APT/USDT': { decimals: 3, minAmount: 0.01 },
-        'ARB/USDT': { decimals: 2, minAmount: 0.1 },
-        'OP/USDT': { decimals: 2, minAmount: 0.1 },
-        'WIF/USDT': { decimals: 3, minAmount: 0.01 },
-        'PEPE/USDT': { decimals: 0, minAmount: 1000000 },
-        'SHIB/USDT': { decimals: 0, minAmount: 1000000 },
-        'FLOKI/USDT': { decimals: 0, minAmount: 100000 }
-      };
-
-      let formattedAmount;
-      const precision = symbolPrecisionMap[symbol] || { decimals: 4, minAmount: 0.01 };
-
-      // 最简单直接的方法：使用币种特定精度
-      const multiplier = Math.pow(10, precision.decimals);
-      const flooredAmount = Math.floor(amount * multiplier) / multiplier;
-
-      // 确保不低于最小交易量
-      const finalAmount = Math.max(flooredAmount, precision.minAmount);
-      formattedAmount = finalAmount.toFixed(precision.decimals);
-
-      // 移除尾部零
-      if (formattedAmount.includes('.')) {
-        formattedAmount = formattedAmount.replace(/\.?0+$/, '');
-      }
-
-      systemLogger.info(`${symbol} 使用币种特定精度: ${amount} -> ${formattedAmount} (精度:${precision.decimals}, 最小:${precision.minAmount})`);
-
-      const numericAmount = parseFloat(formattedAmount);
-      systemLogger.info(`📋 尝试开仓: symbol=${binanceSymbol}, side=${orderSide}, quantity=${numericAmount}, leverage=${env.trading.leverage}`);
-
-      // 完全参照closePosition的下单逻辑
-      const orderParams = {
-        symbol: binanceSymbol,
-        side: orderSide,
-        type: 'MARKET',
-        quantity: numericAmount,
-        leverage: env.trading.leverage.toString(),
-        marginMode: 'ISOLATED',
-        positionSide: side.toUpperCase() // LONG 或 SHORT
-      };
-
       // 使用ccxt的私有API方法直接调用（参照closePosition）
       const order = await exchange.fapiPrivatePostOrder(orderParams);
 
@@ -800,12 +802,13 @@ class TradingEngine {
     } catch (error) {
       systemLogger.error(`${symbol} 开仓失败: ${error.message}`);
 
-      // 如果还是精度错误，直接抛出并记录详细日志
+      // 如果是精度错误，记录详细日志
       if (error.message && (error.message.includes('Precision is over the maximum') || error.code === -1111)) {
         systemLogger.error(`${symbol} 币种特定精度也失败，请检查配置！`);
         systemLogger.error(`错误详情: ${error.message}`);
         systemLogger.error(`尝试的数量: ${numericAmount} (${formattedAmount})`);
-        systemLogger.error(`建议: 在symbolPrecisionMap中添加或调整${symbol}的精度配置`);
+        systemLogger.error(`建议: 在symbolPrecisionMap中调整${symbol}的精度配置（当前:${precision.decimals}位, 最小:${precision.minAmount}）`);
+        systemLogger.error(`参考: ETH/USDT精度已从4位调整为3位，如果仍失败可继续降低到2位`);
       }
 
       this.db.addTradeLog({
