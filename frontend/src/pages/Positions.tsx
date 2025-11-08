@@ -202,8 +202,16 @@ export function Positions() {
 
             <div>
               <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-1">持仓方向</div>
-              <div className={selectedPosition.side === "long" ? "text-success-500" : "text-error-500"}>
-                {selectedPosition.side === "long" ? "做多" : "做空"}
+              <div>
+                {(() => {
+                  // 数据库可能存储 buy/sell 或 long/short，统一映射
+                  const isLong = selectedPosition.side === "long" || selectedPosition.side === "buy";
+                  return (
+                    <span className={isLong ? "text-success-500" : "text-error-500"}>
+                      {isLong ? "做多" : "做空"}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 

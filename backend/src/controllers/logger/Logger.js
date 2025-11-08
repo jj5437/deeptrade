@@ -42,7 +42,7 @@ const createHourlyRotateTransport = (filename) => {
   return new DailyRotateFile({
     filename: path.join(env.paths.logs, `${filename}_%DATE%.log`),
     datePattern: 'YYYYMMDD_HH',
-    zippedArchive: true,
+    zippedArchive: false,
     maxSize: env.logging.maxSize,
     maxFiles: env.logging.maxFiles,
     format: logFormat
@@ -57,7 +57,7 @@ const transports = [
   new DailyRotateFile({
     filename: path.join(env.paths.logs, 'api_%DATE%.log'),
     datePattern: 'YYYYMMDD_HH',
-    zippedArchive: true,
+    zippedArchive: false,
     maxSize: env.logging.maxSize,
     maxFiles: '168h', // 保留168小时（7天）
     format: logFormat
@@ -123,7 +123,7 @@ const apiLogger = winston.createLogger({
     new DailyRotateFile({
       filename: path.join(env.paths.logs, 'api_%DATE%.log'),
       datePattern: 'YYYYMMDD_HH',
-      zippedArchive: true,
+      zippedArchive: false,
       maxSize: env.logging.maxSize,
       maxFiles: '168h' // 保留168小时（7天）
     })
