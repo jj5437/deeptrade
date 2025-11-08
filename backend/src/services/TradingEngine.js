@@ -600,28 +600,34 @@ class TradingEngine {
       }
     }
 
-    // 第三层：AI止损检查
-    if (signalData.stopLoss) {
-      if (position.side === 'long' && currentPrice <= signalData.stopLoss) {
-        systemLogger.info(`${position.symbol} 触发AI止损，平仓`);
-        return true;
-      }
-      if (position.side === 'short' && currentPrice >= signalData.stopLoss) {
-        systemLogger.info(`${position.symbol} 触发AI止损，平仓`);
-        return true;
-      }
-    }
+    // 第三层：AI止损检查（仅当AI信号方向与持仓方向一致时）
+    // 只有当AI建议的方向与当前持仓方向一致时，才使用AI止损/止盈
+    if (signalData.signal &&
+        ((position.side === 'long' && signalData.signal === 'BUY') ||
+         (position.side === 'short' && signalData.signal === 'SELL'))) {
 
-    // 第四层：止盈检查（独立执行，任意满足即止盈）
-    // AI动态止盈
-    if (env.trading.takeProfitEnabled && signalData.takeProfit) {
-      if (position.side === 'long' && currentPrice >= signalData.takeProfit) {
-        systemLogger.info(`${position.symbol} 触发AI止盈，平仓`);
-        return true;
+      if (signalData.stopLoss) {
+        if (position.side === 'long' && currentPrice <= signalData.stopLoss) {
+          systemLogger.info(`${position.symbol} 触发AI止损（信号匹配），平仓`);
+          return true;
+        }
+        if (position.side === 'short' && currentPrice >= signalData.stopLoss) {
+          systemLogger.info(`${position.symbol} 触发AI止损（信号匹配），平仓`);
+          return true;
+        }
       }
-      if (position.side === 'short' && currentPrice <= signalData.takeProfit) {
-        systemLogger.info(`${position.symbol} 触发AI止盈，平仓`);
-        return true;
+
+      // 第四层：止盈检查（独立执行，任意满足即止盈）
+      // AI动态止盈
+      if (env.trading.takeProfitEnabled && signalData.takeProfit) {
+        if (position.side === 'long' && currentPrice >= signalData.takeProfit) {
+          systemLogger.info(`${position.symbol} 触发AI止盈（信号匹配），平仓`);
+          return true;
+        }
+        if (position.side === 'short' && currentPrice <= signalData.takeProfit) {
+          systemLogger.info(`${position.symbol} 触发AI止盈（信号匹配），平仓`);
+          return true;
+        }
       }
     }
 

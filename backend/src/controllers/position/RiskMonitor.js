@@ -84,7 +84,14 @@ class RiskMonitor {
 
       systemLogger.info(`风险检查: 检查 ${positions.length} 个持仓`);
       // 并发检查所有持仓（带超时控制）
-      const checkPromises = positions.map(position => this.checkPosition(position));
+      const checkPromises = positions.map(position =>
+        Promise.race([
+          this.checkPosition(position),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('检查超时')), 10000)  // 10秒超时
+          )
+        ])
+      );
       await Promise.allSettled(checkPromises);
 
     } catch (error) {
