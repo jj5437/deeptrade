@@ -694,7 +694,7 @@ class TradingEngine {
       'ETH/USDT': { decimals: 3, minAmount: 0.001 }, // 从4位调整为3位，更安全
       'SOL/USDT': { decimals: 2, minAmount: 0.01 },
       'XRP/USDT': { decimals: 1, minAmount: 1 },
-      'BNB/USDT': { decimals: 4, minAmount: 0.01 },
+      'BNB/USDT': { decimals: 2, minAmount: 0.01 },
       'ADA/USDT': { decimals: 1, minAmount: 1 },
       'DOGE/USDT': { decimals: 0, minAmount: 100 },
       'MATIC/USDT': { decimals: 1, minAmount: 1 },
