@@ -82,8 +82,11 @@ class WebSocketManager {
    * 发送位置更新
    */
   sendPositionUpdate(positions) {
+    // 确保 positions 是数组格式
+    const positionsArray = Array.isArray(positions) ? positions : [positions];
+
     // 记录要推送的数据（最多5条，避免日志过多）
-    const logData = positions.slice(0, 5).map(pos => ({
+    const logData = positionsArray.slice(0, 5).map(pos => ({
       symbol: pos.symbol,
       currentPrice: pos.currentPrice,
       pnl: pos.pnl,
