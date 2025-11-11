@@ -26,8 +26,6 @@ class TradingEngine {
     this.priceHistory = {};
     this.signalHistory = {};
     this.positions = {};
-    this.tradePerformance = {};
-    this.portfolioReturns = {};
     this.trendAnalysis = {};
     this.webSocketManager = null;
     this.lastPriceUpdate = 0;
@@ -452,9 +450,7 @@ class TradingEngine {
       const signalData = await aiAnalysis.analyzeWithAI(
         priceData,
         this.priceHistory,
-        this.signalHistory,
-        this.tradePerformance,
-        this.portfolioReturns
+        this.signalHistory
       );
 
       if (signalData) {
@@ -552,12 +548,6 @@ class TradingEngine {
               action: 'close_position',
               message: '风险控制平仓',
               success: true,
-              pnl: result.pnl
-            });
-
-            // 更新交易性能
-            riskManagement.updateTradePerformance(symbol, this.tradePerformance[symbol], {
-              signal: signalData.signal,
               pnl: result.pnl
             });
           }
@@ -877,15 +867,6 @@ class TradingEngine {
   broadcastPositionUpdate() {
     if (this.webSocketManager) {
       this.webSocketManager.sendPositionUpdate(this.positions);
-    }
-  }
-
-  /**
-   * 广播交易更新
-   */
-  broadcastTradeUpdate() {
-    if (this.webSocketManager) {
-      this.webSocketManager.sendTradeUpdate(this.tradePerformance);
     }
   }
 

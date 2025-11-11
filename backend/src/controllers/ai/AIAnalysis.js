@@ -24,7 +24,7 @@ class AIAnalysis {
   /**
    * 使用Alpha Arena风格进行AI分析
    */
-  async analyzeWithAI(priceData, priceHistory, signalHistory, tradePerformance, portfolioReturns) {
+  async analyzeWithAI(priceData, priceHistory, signalHistory) {
     const symbol = priceData.symbol;
 
     // =============== 第一层锁：防止并发分析 ===============
@@ -74,24 +74,6 @@ class AIAnalysis {
       priceHistory[symbol] = [];
     }
 
-    // 初始化交易性能数据
-    if (!tradePerformance[symbol]) {
-      tradePerformance[symbol] = {
-        totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
-        totalPnl: 0,
-        lastSignals: [],
-        accuracyBySignal: {
-          BUY: { wins: 0, total: 0 },
-          SELL: { wins: 0, total: 0 }
-        },
-        avgHoldingTime: 0,
-        maxConsecutiveLosses: 0,
-        currentConsecutiveLosses: 0
-      };
-    }
-
     // 初始化信号历史
     if (!signalHistory[symbol]) {
       signalHistory[symbol] = [];
@@ -103,7 +85,8 @@ class AIAnalysis {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
         // 构建Alpha Arena风格的提示词
-        const prompt = await this.buildAlphaArenaPrompt(symbol, priceData, tradePerformance, portfolioReturns);
+        const prompt = await this.buildAlphaArenaPrompt(symbol, priceData);
+        systemLogger.info(`${symbol} 构建AlphaArena提示词成功: ${prompt}`);
         if (!prompt) {
           systemLogger.error(`${symbol} 构建提示词失败`);
           return null;
@@ -333,7 +316,7 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
   /**
    * 构建Alpha Arena风格的提示词
    */
-  async buildAlphaArenaPrompt(symbol, priceData, tradePerformance, portfolioReturns) {
+  async buildAlphaArenaPrompt(symbol, priceData) {
     try {
       // 获取3分钟级别技术指标
       const indicators3m = await technicalAnalysis.getTechnicalIndicatorsSeries(symbol, '3m', 60);
@@ -364,12 +347,31 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
       const currentPosition = await exchangeUtils.getCurrentPosition(symbol);
       const positionText = await this.buildPositionText(symbol, currentPosition);
 
-      // 计算夏普比率
+      // 获取历史持仓记录（过去3次已平仓交易）
+      const historicalPositionsText = await this.buildHistoricalPositionsText(symbol);
+
+      // 从数据库获取最新的性能统计数据
+      const performanceStats = this.db.getPerformanceStats(symbol);
+
+      // 计算夏普比率：从历史交易计算
       let sharpeRatio = 0;
-      if (portfolioReturns[symbol] && portfolioReturns[symbol].length > 1) {
+      const closedPositions = this.db.getHistoricalPositions(symbol, 20);
+
+      if (closedPositions && closedPositions.length >= 5) {
+        // 计算每笔交易的收益率（盈亏 / 投入资金）
+        const returnsSeries = [];
+        for (const pos of closedPositions) {
+          const pnl = pos.realized_pnl || 0;
+          const invested = (pos.entry_price * pos.size * pos.leverage) || 1; // 投入资金 = 开仓价 * 数量 * 杠杆
+          const returnRate = (pnl / invested) * 100; // 转换为百分比
+          returnsSeries.push(returnRate);
+        }
+
+        // 使用收益率序列计算夏普比率
         const { calculateSharpeRatio } = require('../risk/RiskManagement');
-        const ratios = calculateSharpeRatio(portfolioReturns[symbol]);
+        const ratios = calculateSharpeRatio(returnsSeries);
         sharpeRatio = ratios.sharpe;
+        systemLogger.info(`${symbol} 夏普比率计算完成: ${sharpeRatio.toFixed(3)}, Sortino: ${ratios.sortino.toFixed(3)}, MaxDrawdown: ${(ratios.maxDrawdown * 100).toFixed(2)}%`);
       }
 
       // 构建提示词
@@ -414,14 +416,14 @@ MACD indicators: [${(indicators4h.macdSeries || []).map(v => (v || 0).toFixed(3)
 RSI indicators (14‑Period): [${(indicators4h.rsi14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]`;
       }
 
-      // 生成性能洞察
-      const performance = tradePerformance[symbol] || {
-        totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
-        currentConsecutiveLosses: 0
+      // 生成性能洞察（直接使用数据库中的性能统计）
+      const performance = performanceStats || {
+        total_trades: 0,
+        winning_trades: 0,
+        losing_trades: 0,
+        current_consecutive_losses: 0
       };
-      const performanceInsights = this.generatePerformanceInsights(symbol, performance, portfolioReturns);
+      const performanceInsights = this.generatePerformanceInsights(symbol, performance);
 
       // 添加当前行情信息
       prompt += `\n\nCURRENT MARKET STATUS
@@ -449,7 +451,10 @@ Current Account Value: ${((accountSummary?.accountValue || 0) || 0).toFixed(2)}
 
 Current live positions: ${positionText || 'None'}
 
-Sharpe Ratio: ${(sharpeRatio || 0).toFixed(3)}`;
+Sharpe Ratio: ${(sharpeRatio || 0).toFixed(3)}${(closedPositions && closedPositions.length >= 5) ? ' (Based on historical trades)' : ' (Need 5+ trades)'}
+
+HISTORICAL POSITION RECORDS MADE BY YOU (Last 3 closed trades):
+${historicalPositionsText}`;
 
       return prompt;
     } catch (error) {
@@ -461,25 +466,37 @@ Sharpe Ratio: ${(sharpeRatio || 0).toFixed(3)}`;
   /**
    * 生成性能洞察
    */
-  generatePerformanceInsights(symbol, performance, portfolioReturns) {
+  generatePerformanceInsights(symbol, performance) {
     try {
-      const totalTrades = performance.totalTrades || 0;
-      const winningTrades = performance.winningTrades || 0;
+      // 直接使用数据库格式的数据（snake_case）
+      const totalTrades = performance.total_trades || 0;
+      const winningTrades = performance.winning_trades || 0;
+      const currentConsecutiveLosses = performance.current_consecutive_losses || 0;
       const winRate = totalTrades > 0 ? ((winningTrades / totalTrades) * 100).toFixed(1) : 0;
-      const currentConsecutiveLosses = performance.currentConsecutiveLosses || 0;
 
       let insights = `- ${symbol} Historical Performance: ${totalTrades} trades, Win Rate: ${winRate}%\n`;
       insights += `- Current Consecutive Losses: ${currentConsecutiveLosses}\n`;
 
-      // 添加组合分析
-      if (portfolioReturns[symbol] && portfolioReturns[symbol].length >= 20) {
+      // 添加组合分析：从历史交易计算夏普比率
+      const closedPositions = this.db.getHistoricalPositions(symbol, 20);
+      if (closedPositions && closedPositions.length >= 5) {
+        // 计算每笔交易的收益率（盈亏 / 投入资金）
+        const returnsSeries = [];
+        for (const pos of closedPositions) {
+          const pnl = pos.realized_pnl || 0;
+          const invested = (pos.entry_price * pos.size * pos.leverage) || 1;
+          const returnRate = (pnl / invested) * 100;
+          returnsSeries.push(returnRate);
+        }
+
+        // 使用收益率序列计算夏普比率
         const { calculateSharpeRatio } = require('../risk/RiskManagement');
-        const ratios = calculateSharpeRatio(portfolioReturns[symbol]);
-        insights += `- Sharpe Ratio: ${ratios.sharpe.toFixed(2)}\n`;
+        const ratios = calculateSharpeRatio(returnsSeries);
+        insights += `- Sharpe Ratio: ${ratios.sharpe.toFixed(2)} (Historical trades)\n`;
         insights += `- Sortino Ratio: ${ratios.sortino.toFixed(2)}\n`;
         insights += `- Max Drawdown: ${(ratios.maxDrawdown * 100).toFixed(2)}%\n`;
 
-        if (ratios.sharpe < 0.5) {
+        if (ratios.sharpe > 0 && ratios.sharpe < 0.5) {
           insights += `- Risk Warning: Low risk-adjusted returns\n`;
         }
       }
@@ -591,6 +608,43 @@ Sharpe Ratio: ${(sharpeRatio || 0).toFixed(3)}`;
       // 单个持仓
       const dbPos = findMatchingDbPosition(position, filteredPositions);
       return formatPosition(position, dbPos);
+    }
+  }
+
+  /**
+   * 格式化历史持仓记录文本
+   */
+  async buildHistoricalPositionsText(symbol) {
+    try {
+      // 获取过去3次已平仓的持仓记录
+      const historicalPositions = this.db.getHistoricalPositions(symbol, 3);
+
+      if (!historicalPositions || historicalPositions.length === 0) {
+        return 'No historical positions';
+      }
+
+      // 格式化历史持仓信息
+      const formattedPositions = historicalPositions.map((pos, index) => {
+        const entryTime = new Date(pos.entry_time).toISOString().replace('T', ' ').substring(0, 16);
+        const closeTime = new Date(pos.close_time).toISOString().replace('T', ' ').substring(0, 16);
+        const pnl = pos.realized_pnl || 0;
+        const pnlStr = pnl > 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2);
+        const result = pnl > 0 ? 'WIN' : 'LOSS';
+
+        return `Trade #${index + 1}:
+  - Side: ${pos.side.toUpperCase()}
+  - Entry: $${pos.entry_price.toFixed(2)} (${entryTime})
+  - Close: $${pos.close_price.toFixed(2)} (${closeTime})
+  - Size: ${pos.size}
+  - Leverage: ${pos.leverage}x
+  - P&L: ${pnlStr} (${result})
+  - Reason: ${pos.close_reason || 'N/A'}`;
+      });
+
+      return formattedPositions.join('\n');
+    } catch (error) {
+      systemLogger.error(`构建${symbol}历史持仓文本失败: ${error.message}`);
+      return 'Error loading historical positions';
     }
   }
 

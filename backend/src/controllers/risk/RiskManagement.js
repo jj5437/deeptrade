@@ -27,8 +27,19 @@ class RiskManagement {
         : 0;
       const downsideDeviation = Math.sqrt(downsideVariance);
 
-      // 计算最大回撤
-      const maxDrawdown = this.calculateMaxDrawdown(returns);
+      // 计算最大回撤（使用初始值100作为基准）
+      // 假设初始资金为100%
+      const initialValue = 100;
+      let currentValue = initialValue;
+      let peak = initialValue;
+      let maxDrawdown = 0;
+
+      for (const ret of returns) {
+        currentValue = currentValue * (1 + ret / 100); // ret是百分比
+        peak = Math.max(peak, currentValue);
+        const drawdown = (peak - currentValue) / peak; // 相对于当前峰值的回撤
+        maxDrawdown = Math.max(maxDrawdown, drawdown);
+      }
 
       // 夏普比率
       const sharpe = stdDev === 0 ? 0 : (meanReturn - riskFreeRate) / stdDev;

@@ -479,9 +479,15 @@ class TradingDatabase {
         throw new Error(errorMsg);
       }
 
-      const pnl = (closePrice - dbPosition.entry_price) * dbPosition.size;
-      const sideMultiplier = dbPosition.side === 'sell' ? -1 : 1;
-      const realizedPnl = pnl * sideMultiplier;
+      // 正确计算盈亏：考虑做多做空方向
+      // 做多(buy)：盈利 = close_price - entry_price
+      // 做空(sell)：盈利 = entry_price - close_price
+      let realizedPnl;
+      if (dbPosition.side === 'buy') {
+        realizedPnl = (closePrice - dbPosition.entry_price) * dbPosition.size;
+      } else {
+        realizedPnl = (dbPosition.entry_price - closePrice) * dbPosition.size;
+      }
 
       // 使用数据库ID（数字）更新数据库
       this.updatePosition(dbPosition.id, {
@@ -917,17 +923,31 @@ class TradingDatabase {
       const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
 
       // 计算连续亏损次数
-      let currentConsecutiveLosses = 0;
       let maxConsecutiveLosses = 0;
+      let currentConsecutiveLosses = 0;
 
+      // 计算最大连续亏损次数
+      let tempMaxLosses = 0;
       for (const position of closedPositions) {
         if (position.realized_pnl < 0) {
-          currentConsecutiveLosses++;
-          maxConsecutiveLosses = Math.max(maxConsecutiveLosses, currentConsecutiveLosses);
+          tempMaxLosses++;
+          maxConsecutiveLosses = Math.max(maxConsecutiveLosses, tempMaxLosses);
         } else {
-          currentConsecutiveLosses = 0;
+          tempMaxLosses = 0; // 重置计数器
         }
       }
+
+      // 计算当前连续亏损次数（从最新交易开始往前数）
+      tempMaxLosses = 0;
+      for (let i = closedPositions.length - 1; i >= 0; i--) {
+        const position = closedPositions[i];
+        if (position.realized_pnl < 0) {
+          tempMaxLosses++;
+        } else {
+          break; // 一旦遇到盈利就停止
+        }
+      }
+      currentConsecutiveLosses = tempMaxLosses;
 
       // 更新数据库
       this.updatePerformanceStats(symbol, {
@@ -1067,6 +1087,45 @@ class TradingDatabase {
     } catch (error) {
       systemLogger.error(`删除设置失败: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * 获取指定币种的历史持仓记录（已平仓）
+   * @param {string} symbol - 币种符号
+   * @param {number} limit - 获取记录数量，默认3条
+   */
+  getHistoricalPositions(symbol, limit = 3) {
+    try {
+      // 标准化 symbol 格式
+      const cleanSymbol = symbol.includes(':') ? symbol.split(':')[0] : symbol;
+
+      const stmt = this.db.prepare(`
+        SELECT * FROM positions
+        WHERE symbol = ? AND status = 'closed'
+        ORDER BY close_time DESC
+        LIMIT ?
+      `);
+      const positions = stmt.all(cleanSymbol, limit);
+
+      return positions.map(pos => ({
+        id: pos.id,
+        symbol: pos.symbol,
+        side: pos.side,
+        size: pos.size,
+        entry_price: pos.entry_price,
+        entry_time: pos.entry_time,
+        close_price: pos.close_price,
+        close_time: pos.close_time,
+        close_reason: pos.close_reason,
+        realized_pnl: pos.realized_pnl,
+        leverage: pos.leverage,
+        ai_stop_loss: pos.ai_stop_loss,
+        ai_take_profit: pos.ai_take_profit
+      }));
+    } catch (error) {
+      systemLogger.error(`获取${symbol}历史持仓失败: ${error.message}`);
+      return [];
     }
   }
 
