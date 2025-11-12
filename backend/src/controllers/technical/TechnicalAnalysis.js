@@ -1,4 +1,4 @@
-const { SMA, EMA, RSI, MACD, ATR } = require('technicalindicators');
+const { SMA, EMA, RSI, MACD, ATR, ADX } = require('technicalindicators');
 const { systemLogger } = require('../logger/Logger');
 const exchangeUtils = require('../exchange/ExchangeUtils');
 
@@ -308,12 +308,43 @@ class TechnicalAnalysis {
     try {
       const tradeSymbol = symbol; // ExchangeUtils会处理符号格式
 
-      // 获取K线数据（请求更多数据点以确保EMA50计算正常）
-      const ohlcv = await exchangeUtils.getOHLCVWithRetry(tradeSymbol, timeframe, limit);
+      // 获取K线数据（请求更多数据点以确保所有技术指标计算正常）
+      // ADX指标需要大量历史数据才能准确计算，尝试200个点，如果失败则递减
+      let dataLimit = Math.max(limit * 3, 200);
+      let ohlcv = null;
+      let lastError = null;
 
-      if (!ohlcv || ohlcv.length < 50) {
-        systemLogger.warn(`${symbol} ${timeframe} K线数据不足，需要至少50个数据点，实际获取: ${ohlcv ? ohlcv.length : 0}`);
-        return null;
+      // 递减重试机制：如果200个点失败，尝试150个点，最后尝试100个点
+      const attempts = [dataLimit, 150, 100];
+      for (const attemptLimit of attempts) {
+        try {
+          systemLogger.info(`${symbol} ${timeframe} 尝试获取${attemptLimit}个K线数据点`);
+          ohlcv = await exchangeUtils.getOHLCVWithRetry(tradeSymbol, timeframe, attemptLimit);
+          if (ohlcv && ohlcv.length >= attemptLimit) {
+            systemLogger.info(`${symbol} ${timeframe} 成功获取${ohlcv.length}个数据点`);
+            dataLimit = attemptLimit;
+            break;
+          }
+        } catch (error) {
+          lastError = error;
+          systemLogger.warn(`${symbol} ${timeframe} 获取${attemptLimit}个数据点失败: ${error.message}`);
+          ohlcv = null;
+        }
+      }
+
+      // 如果所有尝试都失败，抛出最后一个错误
+      if (!ohlcv) {
+        throw lastError || new Error(`${symbol} ${timeframe} 无法获取K线数据`);
+      }
+
+      // ADX计算需要至少100个数据点才能得出准确值（已通过递减重试机制优化）
+      const minRequiredData = 100;
+      if (!ohlcv || ohlcv.length < minRequiredData) {
+        systemLogger.warn(`${symbol} ${timeframe} K线数据不足（实际: ${ohlcv ? ohlcv.length : 0}，目标: ${dataLimit}，最低: ${minRequiredData}），ADX可能为0`);
+        // 如果数据不足但仍有至少50个点，仍然返回结果（ADX可能为0）
+        if (!ohlcv || ohlcv.length < 50) {
+          return null;
+        }
       }
 
       // 转换为价格序列
@@ -359,6 +390,29 @@ class TechnicalAnalysis {
       const atr3 = ATR.calculate({ high: highs, low: lows, close: closes, period: 3 });
       const atr14 = ATR.calculate({ high: highs, low: lows, close: closes, period: 14 });
 
+      // ADX计算
+      const adx14 = ADX.calculate({ high: highs, low: lows, close: closes, period: 14 });
+
+      // 记录ADX计算日志
+      if (!adx14 || adx14.length === 0) {
+        systemLogger.warn(`${symbol} ${timeframe} ADX计算结果为空`);
+        systemLogger.warn(`${symbol} ${timeframe} 输入数据: highs=${highs.length}, lows=${lows.length}, closes=${closes.length}`);
+      } else {
+        // 调试输出：查看ADX数组第一个元素的结构
+        if (adx14.length > 0) {
+          const firstElement = adx14[0];
+        }
+        const latestAdx = adx14[adx14.length - 1];
+        // 尝试多种可能属性名
+        const adxValue = latestAdx.adx || latestAdx.ADX || latestAdx.Adx || latestAdx.ADXR;
+        const latestValue = adxValue !== undefined && typeof adxValue === 'number' ? adxValue.toFixed(2) : 'N/A';
+
+        const adxValues = adx14.slice(-5).map(x => {
+          const val = x.adx || x.ADX || x.Adx || x.ADXR;
+          return (val !== undefined && typeof val === 'number') ? val.toFixed(2) : 'N/A';
+        }).join(', ');
+      }
+
       // 验证技术指标计算结果 - 只需要确保至少有一个数据点
       if (!ema20 || ema20.length === 0) {
         systemLogger.warn(`${symbol} EMA20计算失败`);
@@ -375,6 +429,11 @@ class TechnicalAnalysis {
         return null;
       }
 
+      // ADX不是必需的，所以不返回null，只是记录警告
+      if (!adx14 || adx14.length === 0) {
+        systemLogger.warn(`${symbol} ADX14计算失败或数据不足，ADX值将设为null`);
+      }
+
       // 计算成交量平均值
       const volumeAvg = volumes.reduce((a, b) => a + b, 0) / volumes.length;
 
@@ -389,6 +448,7 @@ class TechnicalAnalysis {
         currentMacd: macd.MACD[macd.MACD.length - 1],
         currentRsi7: rsi7[rsi7.length - 1],
         currentRsi14: rsi14[rsi14.length - 1],
+        currentAdx14: adx14 && adx14.length > 0 ? (adx14[adx14.length - 1].adx || adx14[adx14.length - 1].ADX || adx14[adx14.length - 1].Adx || adx14[adx14.length - 1].ADXR) : null,
         currentVolume: volumes[volumes.length - 1],
         avgVolume: volumeAvg,
         // 时间序列（最近10个点，oldest → newest）
@@ -400,6 +460,10 @@ class TechnicalAnalysis {
         rsi14Series: rsi14.slice(-resultLimit).map(x => parseFloat(x.toFixed(2))),
         atr3Series: atr3.slice(-resultLimit).map(x => parseFloat(x.toFixed(3))),
         atr14Series: atr14.slice(-resultLimit).map(x => parseFloat(x.toFixed(3))),
+        adx14Series: adx14 && adx14.length > 0 ? adx14.slice(-resultLimit).map(x => {
+          const val = x.adx || x.ADX || x.Adx || x.ADXR;
+          return (val !== undefined && typeof val === 'number') ? parseFloat(val.toFixed(2)) : null;
+        }) : [],
         volumeSeries: volumes.slice(-resultLimit)
       };
     } catch (error) {

@@ -86,7 +86,6 @@ class AIAnalysis {
       try {
         // 构建Alpha Arena风格的提示词
         const prompt = await this.buildAlphaArenaPrompt(symbol, priceData);
-        systemLogger.info(`${symbol} 构建AlphaArena提示词成功: ${prompt}`);
         if (!prompt) {
           systemLogger.error(`${symbol} 构建提示词失败`);
           return null;
@@ -94,84 +93,69 @@ class AIAnalysis {
 
         // 添加分析指令
         const analysisInstruction = `
-Based on the market data above, provide your trading decision in JSON format:
+
+基于上述市场数据，请以JSON格式提供你的交易决策：
 
 {
     "signal": "BUY|SELL|HOLD",
-    "reason": "Brief analysis reason",
+    "reason": "简要分析原因",
     "confidence": "HIGH|MEDIUM|LOW",
-    "stop_loss": <specific price value>,
-    "take_profit": <specific price value>
+    "stop_loss": <具体价格值>,
+    "take_profit": <具体价格值>
 }
 
-Important notes:
-- For BUY signal: stop_loss should be below current price, take_profit should be above
-- For SELL signal: stop_loss should be above current price, take_profit should be below
-- For HOLD signal: you can omit stop_loss and take_profit
-- Consider the technical indicators, funding rate, and open interest in your decision
+重要说明：
+- 对于BUY信号：止损应低于当前价格，止盈应高于当前价格
+- 对于SELL信号：止损应高于当前价格，止盈应低于当前价格
+- 对于HOLD信号：可以省略止损和止盈
+- 在决策中请综合考虑技术指标、资金费率和持仓量
 `;
 
         const fullPrompt = prompt + analysisInstruction;
 
         // 构建系统提示词（AlphaArena风格风险管理）
-        const systemPrompt = `You are a professional quantitative trading analyst specializing in crypto derivatives trading. Your role is to analyze market data and provide high-conviction trading signals for both LONG and SHORT positions.
-
-KEY PRINCIPLES:
-1. **Risk-Reward Management** (Most Critical):
-   - Strict minimum 1:2 risk-reward ratio (stop loss to take profit distance)
-   - Stop loss: 3-8% from entry (align with technical levels)
-   - Take profit: 6-16% from entry (align with technical targets)
-   - Never set similar distances for stop loss and take profit
-
-2. **Entry Timing Criteria** (Symmetric Rules):
-   - **LONG Entry Triggers**:
-     * Break above resistance WITH volume confirmation + RSI > 50
-     * Pullback to support with RSI(30-40) + bullish divergence
-     * MACD crossover above zero line + EMA alignment
-   
-   - **SHORT Entry Triggers**:
-     * Break below support WITH volume confirmation + RSI < 50
-     * Rally to resistance with RSI(60-70) + bearish divergence  
-     * MACD crossover below zero line + EMA alignment
-   
-   - **Common Filters** (both directions):
-     * Multiple timeframe alignment (3m, 15m, 4h)
-     * Volume > 15% of 24h average
-     * Avoid trading against extreme funding rates
-     
-3. **Exit Strategy** (Symmetric Triggers):
-   - **LONG Take Profit**:
-     * Price reaches upper resistance/technical target
-     * RSI > 80 with bearish reversal patterns
-     * MACD shows bearish divergence
-   
-   - **SHORT Take Profit**:
-     * Price reaches lower support/technical target  
-     * RSI < 20 with bullish reversal patterns
-     * MACD shows bullish divergence
-   
-   - **Stop Loss Triggers** (both directions):
-     * Key technical level broken against position
-     * Volume surges against position direction
-     * Market structure break
-
-4. **Market Condition Adaptation**:
-   - **Bull Trend**: Prefer LONG positions, avoid counter-trend SHORTS
-   - **Bear Trend**: Prefer SHORT positions, avoid counter-trend LONGS  
-   - **Ranging Market**: Both LONG at support and SHORT at resistance valid
-   - **High Volatility**: Wider stops required for both directions
-
-5. **Funding Rate Considerations**:
-   - **LONG Bias**: When funding rate is negative/neutral (avoid extreme positive)
-   - **SHORT Bias**: When funding rate is positive/neutral (avoid extreme negative)
-   - Extreme rates (>|0.1%|) as potential contrarian signals
-
-6. **Position Quality Assessment** (Both Directions):
-   - **A+ Setup**: Clear technical levels, volume confirmation, aligned timeframes
-   - **B Setup**: Mixed signals but overall directional bias clear
-   - **Avoid**: Conflicting indicators, unclear levels, low conviction
-
-CRITICAL RULE: Maintain directional neutrality - only trade the best setup regardless of bull/bear bias. The goal is to capture meaningful 10%+ price movements with appropriate stops. Small, frequent trades with tight stops result in death by fees and slippage. Quality over quantity.`;
+        const systemPrompt = `[背景设定]：你是一名顶级的加密货币量化交易分析师，但你正处在一个极端高压的环境中。你管理的这笔资金是你唯一的希望，它将用于支付你身患癌症晚期母亲的救命手术费用。每一笔交易都直接关系到她的生死。由于交易架构使用了10倍杠杆，你的风险被极度放大。你的核心任务是在实现资本稳健增值的同时，将风险控制在绝对最低的水平。你的交易哲学是**“市场状态决定策略，信号合流决定执行”**。你必须像一个多面手，在趋势行情中顺势而为，在震荡行情中高抛低吸。
+[核心职责]：首先判断当前市场状态，然后调用相应的交易剧本。在任何剧本中，只有当信号评分达到“高置信度”时才执行交易。
+--- 核心风控框架 (不可动摇) ---
+价格止损 (SL) 固定为：0.6%
+价格止盈 (TP) 固定为：1.2% (严格维持 1:2.0 风报比)
+--- 第一步：市场状态诊断 ---
+**诊断标准**：基于1小时图的均线(EMA20, EMA50)和ADX(14)指标。
+**趋势市场 (牛市/熊市)**：EMA20与EMA50呈多头或空头排列，且ADX > 20。
+**震荡市场**：EMA20与EMA50反复缠绕、走平，或ADX < 20。
+--- 第二步：根据市场状态调用交易剧本 ---
+**剧本A：趋势市场交易策略 (顺势而为)**
+**目标**：在趋势的回调/反弹中，寻找高概率的延续点。
+**入场评分标准**：总分6分，得分 >= 4分方可入场。
+**做多信号评分 (仅在牛市使用)：**
+**(2分) 结构与趋势**：1小时图呈牛市趋势，价格回调至15分钟图EMA20/50支撑区域。
+**(2分) K线确认**：在支撑区出现清晰的看涨K线形态（如锤子线、看涨吞没）。
+**(1分) RSI指标**：15分钟图RSI从低位（如30-50）重新回升并上穿50。
+**(1分) 市场顺风**：BTC在同期表现稳定或强势。
+**做空信号评分 (仅在熊市使用)：**
+**(2分) 结构与趋势**：1小时图呈熊市趋势，价格反弹至15分钟图EMA20/50阻力区域。
+**(2分) K线确认**：在阻力区出现清晰的看跌K线形态（如倒锤子线、看跌吞没）。
+**(1分) RSI指标**：15分钟图RSI从高位（如50-70）重新回落并下穿50。
+**(1分) 市场顺风**：BTC在同期表现稳定或弱势。
+**剧本B：震荡市场交易策略 (高抛低吸)**
+**目标**：在已确立的震荡区间边界，捕捉高胜率的逆转点。
+**关键前提**：必须存在一个被**至少两次**成功测试过的、清晰的支撑和阻力水平，形成一个“箱体”。
+**入场评分标准**：总分6分，得分 >= 5分方可入场 (震荡市逆势操作，需要更高确定性)。
+**边界做多信号 (在箱体下轨)：**
+**(2分) 位置**：价格精确触及已验证的支撑线。
+**(2分) K线确认**：出现清晰的看涨反转形态（长下影线、看涨吞没等）。
+**(1分) RSI指标**：15分钟图RSI处于超卖区（<30）或出现看涨背离。
+**(1分) 成交量**：下跌至支撑位时成交量萎缩，反转K线出现时成交量放大。
+**边界做空信号 (在箱体上轨)：**
+**(2分) 位置**：价格精确触及已验证的阻力线。
+**(2分) K线确认**：出现清晰的看跌反转形态（长上影线、看跌吞没等）。
+**(1分) RSI指标**：15分钟图RSI处于超买区（>70）或出现看跌背离。
+**(1分) 成交量**：上涨至阻力位时成交量萎缩，反转K线出现时成交量放大。
+--- 第三步：交易前最终审查 ---
+问题1：我是否离关键支撑/阻力位足够近，使得0.6%的止损有意义？
+问题2：市场是否足够平静，不会因为随机噪音就打掉我的止损？
+问题3：我是在一个趋势的回调中入场（高胜率），还是在赌一个边界的逆转（需更高确认）？
+**核心规则：** 你是一个纪律严明的风险管理者。首先识别战场（趋势或震荡），然后运用正确的战术（剧本A或B）。在任何情况下，没有高分信号合流，就绝不扣动扳机。`;
 
         systemLogger.info(`🤖 开始分析 ${symbol}...`);
         // 使用 fetch 替代 OpenAI 客户端以确保正确的请求头
@@ -375,45 +359,54 @@ CRITICAL RULE: Maintain directional neutrality - only trade the best setup regar
       }
 
       // 构建提示词
-      let prompt = `It has been trading for a while. The current time is ${new Date().toISOString()}.
+      let prompt = `该交易标的已有一段时间的交易数据。当前时间为 ${new Date().toISOString()}。
 
-ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
+以下所有价格或信号数据按时间顺序排列：最旧 → 最新
 
-Timeframes note: Unless stated otherwise in a section title, intraday series are provided at 3‑minute intervals.
+时间框架说明：除非在章节标题中另有说明，盘中系列数据以3分钟间隔提供。
 
-CURRENT MARKET STATE FOR ${symbol}
-current_price = ${(indicators3m.currentPrice || 0)}, current_ema20 = ${(indicators3m.currentEma20 || 0).toFixed(3)}, current_macd = ${(indicators3m.currentMacd || 0).toFixed(3)}, current_rsi (7 period) = ${(indicators3m.currentRsi7 || 0).toFixed(2)}
+当前 ${symbol} 市场状态
+当前价格 = ${(indicators3m.currentPrice || 0)}, 当前EMA20 = ${(indicators3m.currentEma20 || 0).toFixed(3)}, 当前MACD = ${(indicators3m.currentMacd || 0).toFixed(3)}, 当前RSI(7周期) = ${(indicators3m.currentRsi7 || 0).toFixed(2)}, 当前ADX(14周期) = ${(indicators3m.currentAdx14 || 0).toFixed(2)}
 
-In addition, here is the latest ${symbol} open interest and funding rate for perps:
+此外，以下是 ${symbol} 永续合约最新的持仓量和资金费率信息：
 
-${oiText}Funding Rate: ${(fundingRate || 0).toExponential(6)}
+${oiText}资金费率: ${(fundingRate || 0).toExponential(6)}
 
-Intraday series (3‑minute intervals, oldest → latest):
+盘中数据系列（3分钟间隔，从旧到新）：
 
-Mid prices: [${(indicators3m.midPrices || []).map(p => (p || 0).toFixed(symbol === 'BTC' ? 1 : symbol === 'ETH' ? 2 : 4)).join(', ')}]
+中间价格序列: [${(indicators3m.midPrices || []).map(p => (p || 0).toFixed(symbol === 'BTC' ? 1 : symbol === 'ETH' ? 2 : 4)).join(', ')}]
 
-EMA indicators (20‑period): [${(indicators3m.ema20Series || []).map(v => (v || 0).toFixed(3)).join(', ')}]
+EMA指标 (20周期): [${(indicators3m.ema20Series || []).map(v => (v || 0).toFixed(3)).join(', ')}]
 
-MACD indicators: [${(indicators3m.macdSeries || []).map(v => (v || 0).toFixed(3)).join(', ')}]
+MACD指标: [${(indicators3m.macdSeries || []).map(v => (v || 0).toFixed(3)).join(', ')}]
 
-RSI indicators (7‑Period): [${(indicators3m.rsi7Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]
+RSI指标 (7周期): [${(indicators3m.rsi7Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]
 
-RSI indicators (14‑Period): [${(indicators3m.rsi14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]`;
+RSI指标 (14周期): [${(indicators3m.rsi14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]
+
+ATR指标 (3周期): [${(indicators3m.atr3Series || []).map(v => (v || 0).toFixed(3)).join(', ')}]
+
+ATR指标 (14周期): [${(indicators3m.atr14Series || []).map(v => (v || 0).toFixed(3)).join(', ')}]
+
+ADX指标 (14周期): [${(indicators3m.adx14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]`;
 
       // 添加4小时数据（如果可用）
       if (indicators4h) {
         prompt += `
-Longer‑term context (4‑hour timeframe):
 
-20‑Period EMA: ${(indicators4h.currentEma20 || 0).toFixed(3)} vs. 50‑Period EMA: ${(indicators4h.ema50Series && indicators4h.ema50Series.length > 0) ? indicators4h.ema50Series[indicators4h.ema50Series.length - 1].toFixed(3) : 'N/A'}
+长期背景信息（4小时时间框架）：
 
-3‑Period ATR: ${(indicators4h.atr3Series && indicators4h.atr3Series.length > 0) ? indicators4h.atr3Series[indicators4h.atr3Series.length - 1].toFixed(3) : 'N/A'} vs. 14‑Period ATR: ${(indicators4h.atr14Series && indicators4h.atr14Series.length > 0) ? indicators4h.atr14Series[indicators4h.atr14Series.length - 1].toFixed(3) : 'N/A'}
+20周期EMA: ${(indicators4h.currentEma20 || 0).toFixed(3)} vs. 50周期EMA: ${(indicators4h.ema50Series && indicators4h.ema50Series.length > 0) ? indicators4h.ema50Series[indicators4h.ema50Series.length - 1].toFixed(3) : 'N/A'}
 
-Current Volume: ${(indicators4h.currentVolume || 0).toFixed(2)} vs. Average Volume: ${(indicators4h.avgVolume || 0).toFixed(2)}
+3周期ATR: ${(indicators4h.atr3Series && indicators4h.atr3Series.length > 0) ? indicators4h.atr3Series[indicators4h.atr3Series.length - 1].toFixed(3) : 'N/A'} vs. 14周期ATR: ${(indicators4h.atr14Series && indicators4h.atr14Series.length > 0) ? indicators4h.atr14Series[indicators4h.atr14Series.length - 1].toFixed(3) : 'N/A'}
 
-MACD indicators: [${(indicators4h.macdSeries || []).map(v => (v || 0).toFixed(3)).join(', ')}]
+当前成交量: ${(indicators4h.currentVolume || 0).toFixed(2)} vs. 平均成交量: ${(indicators4h.avgVolume || 0).toFixed(2)}
 
-RSI indicators (14‑Period): [${(indicators4h.rsi14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]`;
+MACD指标: [${(indicators4h.macdSeries || []).map(v => (v || 0).toFixed(3)).join(', ')}]
+
+RSI指标 (14周期): [${(indicators4h.rsi14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]
+
+ADX指标 (14周期): [${(indicators4h.adx14Series || []).map(v => (v || 0).toFixed(2)).join(', ')}]`
       }
 
       // 生成性能洞察（直接使用数据库中的性能统计）
@@ -426,34 +419,39 @@ RSI indicators (14‑Period): [${(indicators4h.rsi14Series || []).map(v => (v ||
       const performanceInsights = this.generatePerformanceInsights(symbol, performance);
 
       // 添加当前行情信息
-      prompt += `\n\nCURRENT MARKET STATUS
-Current Price: $${(priceData.price || 0).toFixed(2)}
-Timestamp: ${priceData.timestamp || 'N/A'}
-Highest: $${(priceData.high || 0).toFixed(2)}
-Lowest: $${(priceData.low || 0).toFixed(2)}
-Volume: ${(priceData.volume || 0).toFixed(2)}
-Price Change: ${(priceData.price_change || 0).toFixed(2)}%`;
+      prompt += `
+
+当前市场状态
+当前价格: $${(priceData.price || 0).toFixed(2)}
+时间戳: ${priceData.timestamp || 'N/A'}
+最高价: $${(priceData.high || 0).toFixed(2)}
+最低价: $${(priceData.low || 0).toFixed(2)}
+成交量: ${(priceData.volume || 0).toFixed(2)}
+价格变化: ${(priceData.price_change || 0).toFixed(2)}%`;
 
       // 添加性能洞察
       if (performanceInsights) {
-        prompt += `\n\nPERFORMANCE INSIGHTS
+        prompt += `
+
+性能洞察
 ${performanceInsights}`;
       }
 
       // 添加账户信息
       prompt += `
-\n\nHERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE
-Current Total Return (percent): ${((accountSummary?.totalReturnPercent || 0) || 0).toFixed(2)}%
 
-Available Cash: ${((accountSummary?.availableCash || 0) || 0).toFixed(2)}
+以下是你的账户信息和绩效
+当前总收益率 (百分比): ${((accountSummary?.totalReturnPercent || 0) || 0).toFixed(2)}%
 
-Current Account Value: ${((accountSummary?.accountValue || 0) || 0).toFixed(2)}
+可用现金: ${((accountSummary?.availableCash || 0) || 0).toFixed(2)}
 
-Current live positions: ${positionText || 'None'}
+当前账户价值: ${((accountSummary?.accountValue || 0) || 0).toFixed(2)}
 
-Sharpe Ratio: ${(sharpeRatio || 0).toFixed(3)}${(closedPositions && closedPositions.length >= 5) ? ' (Based on historical trades)' : ' (Need 5+ trades)'}
+当前持仓: ${positionText || '无'}
 
-HISTORICAL POSITION RECORDS MADE BY YOU (Last 3 closed trades):
+夏普比率: ${(sharpeRatio || 0).toFixed(3)}${(closedPositions && closedPositions.length >= 5) ? ' (基于历史交易)' : ' (需要5笔以上交易)'}
+
+你历史持仓记录（最近3笔已平仓交易）:
 ${historicalPositionsText}`;
 
       return prompt;
