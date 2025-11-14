@@ -1,0 +1,67 @@
+{
+  "config": {
+    "symbol": "BTC/USDT",
+    "timeframe": "3m",
+    "initialCapital": 10000,
+    "positionUsd": 1000,
+    "leverage": 10,
+    "feeRate": 0.0004,
+    "stopLossPct": 0.01,
+    "takeProfitPct": 0.02,
+    "slippageMode": "fixed",
+    "fixedSlippage": 0.0005,
+    "atrPeriod": 14,
+    "atrFactor": 0.1
+  },
+  "metrics": {
+    "total_trades": 70,
+    "winning_trades": 20,
+    "losing_trades": 50,
+    "total_return": -994.8418261693005,
+    "total_return_pct": -9.948418261693005,
+    "annualized_return": -19.048043853571762,
+    "max_drawdown": 1599.5292156446703,
+    "max_drawdown_pct": 15.187113215388134,
+    "max_drawdown_duration": 14240,
+    "sharpe_ratio": -1.3399550041478685,
+    "sortino_ratio": -2.4882848615578284,
+    "calmar_ratio": -1.2542241295911059,
+    "profit_factor": 0.804581619563968,
+    "win_rate": 28.57142857142857,
+    "avg_win": 199.2000000000003,
+    "avg_loss": -99.03283652338665,
+    "avg_trade": -13.823454659561797,
+    "largest_win": 199.20000000000095,
+    "largest_loss": -100.80000000000084,
+    "max_consecutive_wins": 3,
+    "max_consecutive_losses": 9,
+    "current_streak": -9,
+    "expectancy": -13.823454659561818,
+    "kelly_criterion": -0.06939485270864354
+  },
+  "mcResults": {
+    "simulations": 1000,
+    "finalReturn": {
+      "min": -9.676418261693307,
+      "max": -9.676418261693216,
+      "mean": -9.676418261693422,
+      "median": -9.676418261693252,
+      "p10": -9.67641826169327,
+      "p25": -9.67641826169327,
+      "p75": -9.676418261693252,
+      "p90": -9.676418261693252
+    },
+    "maxDrawdown": {
+      "min": 9.676418261693252,
+      "max": 26.90837384095769,
+      "mean": 15.897469457518142,
+      "median": 15.534916456285321,
+      "p50": 15.534916456285321,
+      "p90": 20.108965052127758,
+      "p95": 21.519325360144624
+    },
+    "probabilityOfProfit": 0
+  },
+  "tradeCount": 70,
+  "timestamp": "2025-11-14T02:20:52.822Z"
+}

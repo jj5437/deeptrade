@@ -3,9 +3,11 @@ const { systemLogger } = require('../logger/Logger');
 const technicalAnalysis = require('../technical/TechnicalAnalysis');
 const exchangeUtils = require('../exchange/ExchangeUtils');
 const TradingDatabase = require('../database/Database');
+const volumeProfileStrategy = require('../strategy/VolumeProfileStrategy');
 
 /**
- * AI分析模块 - Alpha Arena风格
+ * AI分析模块 - 混合智能系统
+ * 成交量策略（计算逻辑）+ AI风控（决策审查）
  */
 class AIAnalysis {
   constructor() {
@@ -19,10 +21,11 @@ class AIAnalysis {
     this.analysisLocks = new Map();  // 防止同一symbol并发分析的锁
     this.maxRetries = 3;  // 最大重试次数
     this.retryDelay = 2000;  // 初始重试延迟2秒
+    this.useVolumeStrategy = true;  // 是否使用成交量策略（可配置）
   }
 
   /**
-   * 使用Alpha Arena风格进行AI分析
+   * 混合智能分析：成交量策略 + AI风控审查
    */
   async analyzeWithAI(priceData, priceHistory, signalHistory) {
     const symbol = priceData.symbol;
@@ -68,6 +71,87 @@ class AIAnalysis {
         // 如果查询数据库失败，记录错误但继续执行（不阻塞分析）
         systemLogger.warn(`⚠️ 查询${symbol}最近分析时间失败: ${error.message}，继续执行分析`);
       }
+
+    // =============== 第一步：使用成交量策略生成信号 ===============
+    if (this.useVolumeStrategy) {
+      systemLogger.info(`📊 ${symbol} 使用成交量策略分析...`);
+      const strategyResult = await volumeProfileStrategy.analyze(symbol, priceData.price);
+      
+      // 如果策略给出了BUY或SELL信号，则进行AI风控审查
+      if (strategyResult && (strategyResult.signal === 'BUY' || strategyResult.signal === 'SELL')) {
+        systemLogger.info(`📊 ${symbol} 策略信号: ${strategyResult.signal}, 最终分: ${strategyResult.finalScore}`);
+        
+        // 构建AI风控审查的数据包
+        const reviewPackage = {
+          symbol,
+          timestamp: new Date().toISOString(),
+          market_state: await this.determineMarketState(symbol),
+          signal_source: strategyResult.direction === 'long' ? 'VAL_Boundary' : 'VAH_Boundary',
+          score_B: strategyResult.scoreB,
+          score_C: strategyResult.scoreC,
+          final_score: strategyResult.finalScore,
+          suggestion: strategyResult.suggestion,
+          current_price: priceData.price,
+          stop_loss: strategyResult.stopLoss,
+          take_profit: strategyResult.takeProfit
+        };
+
+        // AI风控审查
+        const aiReview = await this.performAIRiskReview(reviewPackage);
+        
+        if (aiReview && aiReview.decision === 'APPROVE') {
+          // AI批准，返回交易信号
+          const signalData = {
+            signal: strategyResult.signal,
+            confidence: strategyResult.confidence,
+            reason: `${strategyResult.reason}. AI Review: ${aiReview.reason}`,
+            stopLoss: strategyResult.stopLoss,
+            takeProfit: strategyResult.takeProfit,
+            timestamp: priceData.timestamp,
+            symbol: symbol,
+            finalScore: strategyResult.finalScore,
+            scoreB: strategyResult.scoreB,
+            scoreC: strategyResult.scoreC
+          };
+
+          this.lastAnalysisTime.set(symbol, currentTime);
+          
+          // 保存到历史记录和数据库
+          if (!signalHistory[symbol]) {
+            signalHistory[symbol] = [];
+          }
+          signalHistory[symbol].push(signalData);
+          if (signalHistory[symbol].length > 30) {
+            signalHistory[symbol].shift();
+          }
+
+          this.db.saveAiSignal({
+            symbol,
+            signal: signalData.signal,
+            confidence: signalData.confidence,
+            reason: signalData.reason,
+            currentPrice: priceData.price,
+            stopLoss: signalData.stopLoss || null,
+            takeProfit: signalData.takeProfit || null
+          });
+
+          systemLogger.info(`✅ ${symbol} AI批准交易: ${signalData.signal} (信心: ${signalData.confidence})`);
+          return signalData;
+        } else {
+          // AI否决
+          systemLogger.info(`❌ ${symbol} AI否决交易: ${aiReview ? aiReview.reason : '风控未通过'}`);
+          this.analysisLocks.set(symbol, false);
+          return null;
+        }
+      } else {
+        // 策略没有给出交易信号
+        systemLogger.info(`⏸️ ${symbol} 策略信号: HOLD - ${strategyResult.reason}`);
+        this.analysisLocks.set(symbol, false);
+        return null;
+      }
+    }
+
+    // =============== 第二步：如果未启用成交量策略，使用原有的AI分析 ===============
 
     // 初始化价格历史
     if (!priceHistory[symbol]) {
@@ -787,6 +871,137 @@ ${historicalPositionsText}`;
       systemLogger.error(`[${symbol}] 解析AI响应失败: ${error.message}`);
       systemLogger.error(`[${symbol}] 错误堆栈: ${error.stack}`);
       return null;
+    }
+  }
+
+  /**
+   * 判断市场状态（趋势/震荡）
+   */
+  async determineMarketState(symbol) {
+    try {
+      // 获取4小时级别的技术指标
+      const indicators = await technicalAnalysis.getTechnicalIndicatorsSeries(symbol, '4h', 30);
+      if (!indicators || !indicators.ema20Series || !indicators.ema50Series || !indicators.adx14Series) {
+        return 'Ranging'; // 默认震荡市
+      }
+
+      const ema20 = indicators.currentEma20;
+      const ema50 = indicators.ema50Series[indicators.ema50Series.length - 1];
+      const adx = indicators.currentAdx14;
+
+      // 判断趋势
+      if (adx > 20) {
+        if (ema20 > ema50) {
+          return 'Trending_Up';
+        } else if (ema20 < ema50) {
+          return 'Trending_Down';
+        }
+      }
+
+      return 'Ranging';
+    } catch (error) {
+      systemLogger.warn(`判断${symbol}市场状态失败: ${error.message}`);
+      return 'Ranging';
+    }
+  }
+
+  /**
+   * AI风控审查
+   * 基于策略生成的信号进行最终风险审查
+   */
+  async performAIRiskReview(reviewPackage) {
+    try {
+      systemLogger.info(`🛡️ AI风控审查: ${reviewPackage.symbol}`);
+
+      // 构建简化的风控提示词
+      const systemPrompt = `你是一名严格的首席风险官（CRO）。你的唯一职责是资本保全。
+
+量化团队已经提交了一个交易信号，你需要进行最终审查。
+
+风险审查规则：
+1. 评分一致性：score_B和score_C不能严重背离（差值>0.5）
+2. 轻仓信号：任何"LIGHT"信号一律否决
+3. 趋势匹配：
+   - Trending_Up时否决做空
+   - Trending_Down时否决做多
+   - Ranging时可双向
+4. 最终评分：final_score必须>=0.78
+
+批准格式：
+{"decision": "APPROVE", "reason": "简要原因"}
+
+否决格式：
+{"decision": "VETO", "reason": "简要原因"}`;
+
+      const userPrompt = `请审查以下交易信号：
+
+市场状态: ${reviewPackage.market_state}
+信号来源: ${reviewPackage.signal_source}
+Score_B: ${reviewPackage.score_B.toFixed(3)}
+Score_C: ${reviewPackage.score_C.toFixed(3)}
+Final_Score: ${reviewPackage.final_score.toFixed(3)}
+建议: ${reviewPackage.suggestion}
+当前价格: ${reviewPackage.current_price}
+止损: ${reviewPackage.stop_loss}
+止盈: ${reviewPackage.take_profit}
+
+请做出审查决策。`;
+
+      // 设置15秒超时
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(`${env.ai.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${env.ai.deepseekApiKey}`
+        },
+        body: JSON.stringify({
+          model: this.modelName,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 500
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        systemLogger.error(`AI风控审查API失败: ${response.status}`);
+        return { decision: 'VETO', reason: 'API request failed' };
+      }
+
+      const data = await response.json();
+      const message = data.choices?.[0]?.message;
+      let content = message?.content || message?.reasoning_content;
+
+      if (!content) {
+        systemLogger.error('AI风控审查响应为空');
+        return { decision: 'VETO', reason: 'Empty AI response' };
+      }
+
+      // 解析JSON响应
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        systemLogger.error('AI风控审查响应格式错误');
+        return { decision: 'VETO', reason: 'Invalid response format' };
+      }
+
+      const result = JSON.parse(jsonMatch[0]);
+      systemLogger.info(`🛡️ AI风控决策: ${result.decision} - ${result.reason}`);
+      
+      return result;
+
+    } catch (error) {
+      systemLogger.error(`AI风控审查失败: ${error.message}`);
+      // 安全第一：如果AI审查失败，默认否决
+      return { decision: 'VETO', reason: `Review error: ${error.message}` };
     }
   }
 

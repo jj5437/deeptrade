@@ -1,0 +1,1209 @@
+WebSocket API行情接口
+行情接口
+订单薄深度信息
+{
+  "id": "51e2affb-0aba-4821-ba75-f2625006eb43",
+  "method": "depth",
+  "params": {
+    "symbol": "BNBBTC",
+    "limit": 5
+  }
+}
+
+获取当前深度信息。
+
+请注意，此请求返回有限的市场深度。
+
+如果需要持续监控深度信息更新，请考虑使用 WebSocket Streams：
+
+<symbol>@depth<levels>
+<symbol>@depth
+如果需要维护本地orderbook，您可以将 depth 请求与 <symbol>@depth streams 一起使用。
+
+权重: 根据限制调整：
+
+限制	重量
+1–100	5
+101–500	25
+501–1000	50
+1001–5000	250
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+limit	INT	NO	默认值： 100； 最大值： 5000
+symbolStatus	ENUM	NO	过滤具有此 tradingStatus 的交易对。
+如果状态不匹配，将返回错误 -1220 交易对与状态不匹配。
+有效值： TRADING, HALT, BREAK
+数据源: 缓存
+
+响应:
+
+{
+  "id": "51e2affb-0aba-4821-ba75-f2625006eb43",
+  "status": 200,
+  "result": {
+    "lastUpdateId": 2731179239,
+    // bid 水平从最高价到最低价排序。
+    "bids": [
+      [
+        "0.01379900",   // 价格
+        "3.43200000"    // 重量
+      ],
+      [
+        "0.01379800",
+        "3.24300000"
+      ],
+      [
+        "0.01379700",
+        "10.45500000"
+      ],
+      [
+        "0.01379600",
+        "3.82100000"
+      ],
+      [
+        "0.01379500",
+        "10.26200000"
+      ]
+    ],
+    // ask 水平从最低价到最高价排序。
+    "asks": [
+      [
+        "0.01380000",
+        "5.91700000"
+      ],
+      [
+        "0.01380100",
+        "6.01400000"
+      ],
+      [
+        "0.01380200",
+        "0.26800000"
+      ],
+      [
+        "0.01380300",
+        "0.33800000"
+      ],
+      [
+        "0.01380400",
+        "0.26800000"
+      ]
+    ]
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 5
+    }
+  ]
+}
+
+最近的交易
+{
+  "id": "409a20bd-253d-41db-a6dd-687862a5882f",
+  "method": "trades.recent",
+  "params": {
+    "symbol": "BNBBTC",
+    "limit": 1
+  }
+}
+
+获取最近的交易
+
+如果您需要访问实时交易活动，请考虑使用 WebSocket Streams：
+
+<symbol>@trade
+权重: 25
+
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+limit	INT	NO	默认值： 500； 最大值： 1000
+数据源: 缓存
+
+响应:
+
+{
+  "id": "409a20bd-253d-41db-a6dd-687862a5882f",
+  "status": 200,
+  "result": [
+    {
+      "id": 194686783,
+      "price": "0.01361000",
+      "qty": "0.01400000",
+      "quoteQty": "0.00019054",
+      "time": 1660009530807,
+      "isBuyerMaker": true,
+      "isBestMatch": true
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 10
+    }
+  ]
+}
+
+历史交易
+{
+  "id": "cffc9c7d-4efc-4ce0-b587-6b87448f052a",
+  "method": "trades.historical",
+  "params": {
+    "symbol": "BNBBTC",
+    "fromId": 0,
+    "limit": 1
+  }
+}
+
+获取历史交易。
+
+权重: 25
+
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+fromId	INT	NO	起始交易ID
+limit	INT	NO	默认值 500； 最大值 1000
+备注：
+
+如果 fromId 未指定，则返回最近的交易。
+数据源: 数据库
+
+响应:
+
+{
+  "id": "cffc9c7d-4efc-4ce0-b587-6b87448f052a",
+  "status": 200,
+  "result": [
+    {
+      "id": 0,
+      "price": "0.00005000",
+      "qty": "40.00000000",
+      "quoteQty": "0.00200000",
+      "time": 1500004800376,
+      "isBuyerMaker": true,
+      "isBestMatch": true
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 10
+    }
+  ]
+}
+
+归集交易
+{
+  "id": "189da436-d4bd-48ca-9f95-9f613d621717",
+  "method": "trades.aggregate",
+  "params": {
+    "symbol": "BNBBTC",
+    "fromId": 50000000,
+    "limit": 1
+  }
+}
+
+获取归集交易。
+
+一个 归集交易 (aggtrade) 代表一个或多个单独的交易。 同时间，同 taker 订单和同价格的执行交易会被聚合为一条归集交易。
+
+如果需要访问实时交易活动，请考虑使用 WebSocket Streams：
+
+<symbol>@aggTrade
+如果需要历史总交易数据，可以使用 data.binance.vision。
+
+权重: 4
+
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+fromId	INT	NO	起始归集交易ID
+startTime	INT	NO	
+endTime	LONG	NO	
+limit	LONG	NO	默认值： 500； 最大值： 1000
+备注：
+
+如果指定了 fromId，则返回归集交易 ID >= fromId 的 aggtrades。
+
+使用 fromId 和 limit 会对所有 aggtrades 进行分页。
+
+如果指定了 startTime 和/或 endTime，响应中的 aggtrades 会按照执行时间 (T) 过滤。
+
+fromId 不能与 startTime 和 endTime 一起使用。
+
+如果未指定条件，则返回最近的归集交易。
+
+数据源: 数据库
+
+响应:
+
+{
+  "id": "189da436-d4bd-48ca-9f95-9f613d621717",
+  "status": 200,
+  "result": [
+    {
+      "a": 50000000,        // 归集交易ID
+      "p": "0.00274100",    // 价格
+      "q": "57.19000000",   // 重量
+      "f": 59120167,        // 被归集的首个交易ID
+      "l": 59120170,        // 被归集的末次交易ID
+      "T": 1565877971222,   // 时间戳
+      "m": true,            // 买方是否是做市方。如true，则此次成交是一个主动卖出单，否则是一个主动买入单。
+      "M": true             // 交易是否是最好价格匹配。
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+
+K线数据
+{
+  "id": "1dbbeb56-8eea-466a-8f6e-86bdcfa2fc0b",
+  "method": "klines",
+  "params": {
+    "symbol": "BNBBTC",
+    "interval": "1h",
+    "startTime": 1655969280000,
+    "limit": 1
+  }
+}
+
+获取K线数据。
+
+Klines 由其开盘时间和收盘时间为唯一标识。
+
+如果您需要访问实时 kline 更新，请考虑使用 WebSocket Streams：
+
+<symbol>@kline_<interval>
+如果需要历史K线数据，可以使用 data.binance.vision。
+
+权重: 2
+
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+interval	ENUM	YES	
+startTime	LONG	NO	
+endTime	LONG	NO	
+timeZone	STRING	NO	默认: 0 (UTC)
+limit	INT	NO	默认值： 500； 最大值： 1000
+支持的 kline 间隔（大小写敏感）：
+
+时间间隔	interval 值
+seconds	1s
+minutes	1m, 3m, 5m, 15m, 30m
+hours	1h, 2h, 4h, 6h, 8h, 12h
+days	1d, 3d
+weeks	1w
+months	1M
+备注:
+
+如果没有指定 startTime，endTime，则返回最近的klines。
+timeZone支持的值包括：
+小时和分钟（例如 -1:00，05:45）
+仅小时（例如 0，8，4）
+接受的值范围严格为 [-12:00 到 +14:00]（包括边界）
+如果提供了timeZone，K线间隔将在该时区中解释，而不是在UTC中。
+请注意，无论timeZone如何，startTime和endTime始终以UTC时区解释。
+数据源: 数据库
+
+响应:
+
+{
+  "id": "1dbbeb56-8eea-466a-8f6e-86bdcfa2fc0b",
+  "status": 200,
+  "result": [
+    [
+      1655971200000,      // 这根K线的起始时间
+      "0.01086000",       // 这根K线期间第一笔成交价
+      "0.01086600",       // 这根K线期间最高成交价
+      "0.01083600",       // 这根K线期间最低成交价
+      "0.01083800",       // 这根K线期间末一笔成交价
+      "2290.53800000",    // 这根K线期间成交量
+      1655974799999,      // 这根K线的结束时间
+      "24.85074442",      // 这根K线期间成交额
+      2283,               // 这根K线期间成交笔数
+      "1171.64000000",    // 主动买入的成交量
+      "12.71225884",      // 主动买入的成交额
+      "0"                 // 忽略此参数
+    ]
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+UI K线数据
+{
+  "id": "b137468a-fb20-4c06-bd6b-625148eec958",
+  "method": "uiKlines",
+  "params": {
+    "symbol": "BNBBTC",
+    "interval": "1h",
+    "startTime": 1655969280000,
+    "limit": 1
+  }
+}
+
+请求参数和响应字段与k线接口相同。 uiKlines 是返回修改后的k线数据，针对k线图的呈现进行了优化。
+
+权重: 2
+
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+interval	ENUM	YES	请看 k线
+startTime	LONG	NO	
+endTime	LONG	NO	
+timeZone	STRING	NO	默认: 0 (UTC)
+limit	INT	NO	默认值： 500； 最大值： 1000
+备注:
+
+如果没有指定 startTime，endTime，则返回最近的klines。
+timeZone支持的值包括：
+小时和分钟（例如 -1:00，05:45）
+仅小时（例如 0，8，4）
+接受的值范围严格为 [-12:00 到 +14:00]（包括边界）
+如果提供了timeZone，K线间隔将在该时区中解释，而不是在UTC中。
+请注意，无论timeZone如何，startTime和endTime始终以UTC时区解释。
+数据源: 数据库
+
+响应:
+
+{
+  "id": "b137468a-fb20-4c06-bd6b-625148eec958",
+  "status": 200,
+  "result": [
+    [
+      1655971200000,      // 这根K线的起始时间
+      "0.01086000",       // 这根K线期间第一笔成交价
+      "0.01086600",       // 这根K线期间最高成交价
+      "0.01083600",       // 这根K线期间最低成交价
+      "0.01083800",       // 这根K线期间末一笔成交价
+      "2290.53800000",    // 这根K线期间成交量
+      1655974799999,      // 这根K线的结束时间
+      "24.85074442",      // 这根K线期间成交额
+      2283,               // 这根K线期间成交笔数
+      "1171.64000000",    // 主动买入的成交量
+      "12.71225884",      // 主动买入的成交额
+      "0"                 // 忽略此参数
+    ]
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+当前平均价格
+{
+  "id": "ddbfb65f-9ebf-42ec-8240-8f0f91de0867",
+  "method": "avgPrice",
+  "params": {
+    "symbol": "BNBBTC"
+  }
+}
+
+获取交易对的当前平均价格
+
+权重: 2
+
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	
+数据源: 缓存
+
+响应:
+
+{
+  "id": "ddbfb65f-9ebf-42ec-8240-8f0f91de0867",
+  "status": 200,
+  "result": {
+    "mins": 5,              // 以分钟为单位的价格平均间隔
+    "price": "0.01378135",
+    "closeTime": 1694061154503
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 1
+    }
+  ]
+}
+
+
+24hr 价格变动情况
+{
+  "id": "93fb61ef-89f8-4d6e-b022-4f035a3fadad",
+  "method": "ticker.24hr",
+  "params": {
+    "symbol": "BNBBTC"
+  }
+}
+
+24 小时滚动窗口价格变动数据。 如果您需要持续监控交易统计，请考虑使用 WebSocket Streams:
+
+<symbol>@ticker 或者 !ticker@arr
+<symbol>@miniTicker 或者 !miniTicker@arr
+如果你想用不同的窗口数量，可以用 ticker 请求。
+
+权重: 根据交易对的数量进行调整：
+
+交易对	重量
+1–20	2
+21–100	40
+101 以上	80
+全部交易对	80
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	NO	获取单个交易对的 ticker
+symbols	ARRAY of STRING	获取多个交易对的 ticker
+type	ENUM	NO	Ticker 类型: FULL (默认) 或者 MINI
+symbolStatus	ENUM	NO	过滤具有此 tradingStatus 的交易对。
+对于单个交易对，如果状态不匹配，将返回错误 -1220 交易对与状态不匹配。
+对于多个或者全部交易对， 响应中不会包括状态不匹配的交易对。
+有效值： TRADING, HALT, BREAK
+备注:
+
+symbol 和 symbols 不能同时用。
+
+如果未指定交易对，则返回有关当前在交易所交易的所有交易对的信息。
+
+数据源: 缓存
+
+响应:
+
+FULL 类型，对于单个交易对：
+
+{
+  "id": "93fb61ef-89f8-4d6e-b022-4f035a3fadad",
+  "status": 200,
+  "result": {
+    "symbol": "BNBBTC",
+    "priceChange": "0.00013900",
+    "priceChangePercent": "1.020",
+    "weightedAvgPrice": "0.01382453",
+    "prevClosePrice": "0.01362800",
+    "lastPrice": "0.01376700",
+    "lastQty": "1.78800000",
+    "bidPrice": "0.01376700",
+    "bidQty": "4.64600000",
+    "askPrice": "0.01376800",
+    "askQty": "14.31400000",
+    "openPrice": "0.01362800",
+    "highPrice": "0.01414900",
+    "lowPrice": "0.01346600",
+    "volume": "69412.40500000",
+    "quoteVolume": "959.59411487",
+    "openTime": 1660014164909,
+    "closeTime": 1660100564909,
+    "firstId": 194696115,       // 第一个交易 ID
+    "lastId": 194968287,        // 最后一个交易 ID
+    "count": 272173             // 成交笔数
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+MINI 类型，对于单个交易对：
+
+{
+  "id": "9fa2a91b-3fca-4ed7-a9ad-58e3b67483de",
+  "status": 200,
+  "result": {
+    "symbol": "BNBBTC",
+    "openPrice": "0.01362800",
+    "highPrice": "0.01414900",
+    "lowPrice": "0.01346600",
+    "lastPrice": "0.01376700",
+    "volume": "69412.40500000",
+    "quoteVolume": "959.59411487",
+    "openTime": 1660014164909,
+    "closeTime": 1660100564909,
+    "firstId": 194696115,       // 第一个交易 ID
+    "lastId": 194968287,        // 最后一个交易ID
+    "count": 272173             // 成交笔数
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+如果请求是有多个交易对，响应会是数组类型:
+
+{
+  "id": "901be0d9-fd3b-45e4-acd6-10c580d03430",
+  "status": 200,
+  "result": [
+    {
+      "symbol": "BNBBTC",
+      "priceChange": "0.00016500",
+      "priceChangePercent": "1.213",
+      "weightedAvgPrice": "0.01382508",
+      "prevClosePrice": "0.01360800",
+      "lastPrice": "0.01377200",
+      "lastQty": "1.01400000",
+      "bidPrice": "0.01377100",
+      "bidQty": "7.55700000",
+      "askPrice": "0.01377200",
+      "askQty": "4.37900000",
+      "openPrice": "0.01360700",
+      "highPrice": "0.01414900",
+      "lowPrice": "0.01346600",
+      "volume": "69376.27900000",
+      "quoteVolume": "959.13277091",
+      "openTime": 1660014615517,
+      "closeTime": 1660101015517,
+      "firstId": 194697254,
+      "lastId": 194969483,
+      "count": 272230
+    },
+    {
+      "symbol": "BTCUSDT",
+      "priceChange": "-938.06000000",
+      "priceChangePercent": "-3.938",
+      "weightedAvgPrice": "23265.34432003",
+      "prevClosePrice": "23819.17000000",
+      "lastPrice": "22880.91000000",
+      "lastQty": "0.00536000",
+      "bidPrice": "22880.40000000",
+      "bidQty": "0.00424000",
+      "askPrice": "22880.91000000",
+      "askQty": "0.04276000",
+      "openPrice": "23818.97000000",
+      "highPrice": "23933.25000000",
+      "lowPrice": "22664.69000000",
+      "volume": "153508.37606000",
+      "quoteVolume": "3571425225.04441220",
+      "openTime": 1660014615977,
+      "closeTime": 1660101015977,
+      "firstId": 1592019902,
+      "lastId": 1597301762,
+      "count": 5281861
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+交易日行情(Ticker)
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "method": "ticker.tradingDay",
+  "params": {
+    "symbols": [
+      "BNBBTC",
+      "BTCUSDT"
+    ],
+    "timeZone": "00:00"
+  }
+}
+
+交易日价格变动统计。
+
+权重:
+
+每个交易对占用4个权重.
+
+当请求中的交易对数量超过50，此请求的权重将限制在200。
+
+参数:
+
+参数名	类型	是否必需	描述
+symbol	STRING	YES	查询单交易对的行情
+symbols	ARRAY of STRING	查询多交易对行情
+timeZone	STRING	NO	默认: 0 (UTC)
+type	ENUM	NO	可接受值: FULL or MINI.
+默认值: FULL
+symbolStatus	ENUM	NO	过滤具有此 tradingStatus 的交易对。
+对于单个交易对，如果状态不匹配，将返回错误 -1220 交易对与状态不匹配。
+对于多个交易对， 响应中不会包括状态不匹配的交易对。
+有效值： TRADING, HALT, BREAK
+注意:
+
+timeZone支持的值包括：
+小时和分钟（例如 -1:00，05:45）
+仅小时（例如 0，8，4）
+数据源: 数据库
+
+响应 - FULL
+
+有 symbol:
+
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "status": 200,
+  "result": {
+    "symbol": "BTCUSDT",
+    "priceChange": "-83.13000000",                // 绝对价格变动
+    "priceChangePercent": "-0.317",               // 相对价格变动百分比
+    "weightedAvgPrice": "26234.58803036",         // 报价成交量 / 成交量
+    "openPrice": "26304.80000000",
+    "highPrice": "26397.46000000",
+    "lowPrice": "26088.34000000",
+    "lastPrice": "26221.67000000",
+    "volume": "18495.35066000",                   // 基础资产的成交量
+    "quoteVolume": "485217905.04210480",
+    "openTime": 1695686400000,
+    "closeTime": 1695772799999,
+    "firstId": 3220151555,
+    "lastId": 3220849281,
+    "count": 697727
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 4
+    }
+  ]
+}
+
+有 symbols:
+
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "status": 200,
+  "result": [
+    {
+      "symbol": "BTCUSDT",
+      "priceChange": "-83.13000000",
+      "priceChangePercent": "-0.317",
+      "weightedAvgPrice": "26234.58803036",
+      "openPrice": "26304.80000000",
+      "highPrice": "26397.46000000",
+      "lowPrice": "26088.34000000",
+      "lastPrice": "26221.67000000",
+      "volume": "18495.35066000",
+      "quoteVolume": "485217905.04210480",
+      "openTime": 1695686400000,
+      "closeTime": 1695772799999,
+      "firstId": 3220151555,
+      "lastId": 3220849281,
+      "count": 697727
+    },
+    {
+      "symbol": "BNBUSDT",
+      "priceChange": "2.60000000",
+      "priceChangePercent": "1.238",
+      "weightedAvgPrice": "211.92276958",
+      "openPrice": "210.00000000",
+      "highPrice": "213.70000000",
+      "lowPrice": "209.70000000",
+      "lastPrice": "212.60000000",
+      "volume": "280709.58900000",
+      "quoteVolume": "59488753.54750000",
+      "openTime": 1695686400000,
+      "closeTime": 1695772799999,
+      "firstId": 672397461,
+      "lastId": 672496158,
+      "count": 98698
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 8
+    }
+  ]
+}
+
+相应: - MINI
+
+有 symbol:
+
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "status": 200,
+  "result": {
+    "symbol": "BTCUSDT",
+    "openPrice": "26304.80000000",
+    "highPrice": "26397.46000000",
+    "lowPrice": "26088.34000000",
+    "lastPrice": "26221.67000000",
+    "volume": "18495.35066000",                  // 基础资产的成交量
+    "quoteVolume": "485217905.04210480",         // 报价资产的成交量
+    "openTime": 1695686400000,
+    "closeTime": 1695772799999,
+    "firstId": 3220151555,                       // 区间内的第一个交易的交易ID
+    "lastId": 3220849281,                        // 区间内的最后一个交易的交易ID
+    "count": 697727                              // 区间内的交易数量
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 4
+    }
+  ]
+}
+
+With symbols:
+
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "status": 200,
+  "result": [
+    {
+      "symbol": "BTCUSDT",
+      "openPrice": "26304.80000000",
+      "highPrice": "26397.46000000",
+      "lowPrice": "26088.34000000",
+      "lastPrice": "26221.67000000",
+      "volume": "18495.35066000",
+      "quoteVolume": "485217905.04210480",
+      "openTime": 1695686400000,
+      "closeTime": 1695772799999,
+      "firstId": 3220151555,
+      "lastId": 3220849281,
+      "count": 697727
+    },
+    {
+      "symbol": "BNBUSDT",
+      "openPrice": "210.00000000",
+      "highPrice": "213.70000000",
+      "lowPrice": "209.70000000",
+      "lastPrice": "212.60000000",
+      "volume": "280709.58900000",
+      "quoteVolume": "59488753.54750000",
+      "openTime": 1695686400000,
+      "closeTime": 1695772799999,
+      "firstId": 672397461,
+      "lastId": 672496158,
+      "count": 98698
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 8
+    }
+  ]
+}
+
+
+滚动窗口价格变动统计
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "method": "ticker",
+  "params": {
+    "symbols": [
+      "BNBBTC",
+      "BTCUSDT"
+    ],
+    "windowSize": "7d"
+  }
+}
+
+使用自定义窗口获取滚动窗口价格变化统计信息。
+
+这个请求类似于 ticker.24hr，但统计数据是使用指定的任意窗口按需计算的。
+
+注意： 窗口大小精度限制为1分钟。 虽然 closeTime 是请求的当前时间，openTime 总是从分钟边界开始。 因此，有效窗口可能比请求的 windowSize 宽59999毫秒。
+
+窗口计算示例
+如果您需要持续监控交易统计，请考虑使用 WebSocket Streams:
+
+<symbol>@ticker_<window_size> 或者 !ticker_<window-size>@arr
+权重: 根据交易对的数量进行调整：
+
+交易对	重量
+1–50	4 per symbol
+51–100	200
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	YES	获取单个交易对的 ticker
+symbols	ARRAY of STRING	获取多个交易对的 ticker
+type	ENUM	NO	Ticker 类型： FULL (默认) 或者 MINI
+windowSize	ENUM	NO	默认 1d
+symbolStatus	ENUM	NO	过滤具有此 tradingStatus 的交易对。
+对于单个交易对，如果状态不匹配，将返回错误 -1220 交易对与状态不匹配。
+对于多个交易对， 响应中不会包括状态不匹配的交易对。
+有效值： TRADING, HALT, BREAK
+支持的窗口 size:
+
+单位	windowSize 值
+minutes	1m, 2m ... 59m
+hours	1h, 2h ... 23h
+days	1d, 2d ... 7d
+备注：
+
+必须指定 symbol 或 symbols。
+
+一个请求中的最大交易对数：200。
+
+窗口 size 单位不能合并。 比如不支持 1d 2h。
+
+数据源: 数据库
+
+响应:
+
+FULL 类型，对于单个交易对：
+
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "status": 200,
+  "result": {
+    "symbol": "BNBBTC",
+    "priceChange": "0.00061500",
+    "priceChangePercent": "4.735",
+    "weightedAvgPrice": "0.01368242",
+    "openPrice": "0.01298900",
+    "highPrice": "0.01418800",
+    "lowPrice": "0.01296000",
+    "lastPrice": "0.01360400",
+    "volume": "587179.23900000",
+    "quoteVolume": "8034.03382165",
+    "openTime": 1659580020000,
+    "closeTime": 1660184865291,
+    "firstId": 192977765,       // 第一个交易 ID
+    "lastId": 195365758,        // 最后交易 ID
+    "count": 2387994            // 成交笔数
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 4
+    }
+  ]
+}
+
+MINI 类型，对于单个交易对：
+
+{
+  "id": "bdb7c503-542c-495c-b797-4d2ee2e91173",
+  "status": 200,
+  "result": {
+    "symbol": "BNBBTC",
+    "openPrice": "0.01298900",
+    "highPrice": "0.01418800",
+    "lowPrice": "0.01296000",
+    "lastPrice": "0.01360400",
+    "volume": "587179.23900000",
+    "quoteVolume": "8034.03382165",
+    "openTime": 1659580020000,
+    "closeTime": 1660184865291,
+    "firstId": 192977765,       // 第一个交易 ID
+    "lastId": 195365758,        // 最后交易 ID
+    "count": 2387994            // 成交笔数
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 4
+    }
+  ]
+}
+
+如果请求是有多个交易对，响应会是数组类型:
+
+{
+  "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+  "status": 200,
+  "result": [
+    {
+      "symbol": "BNBBTC",
+      "priceChange": "0.00061500",
+      "priceChangePercent": "4.735",
+      "weightedAvgPrice": "0.01368242",
+      "openPrice": "0.01298900",
+      "highPrice": "0.01418800",
+      "lowPrice": "0.01296000",
+      "lastPrice": "0.01360400",
+      "volume": "587169.48600000",
+      "quoteVolume": "8033.90114517",
+      "openTime": 1659580020000,
+      "closeTime": 1660184820927,
+      "firstId": 192977765,
+      "lastId": 195365700,
+      "count": 2387936
+    },
+    {
+      "symbol": "BTCUSDT",
+      "priceChange": "1182.92000000",
+      "priceChangePercent": "5.113",
+      "weightedAvgPrice": "23349.27074846",
+      "openPrice": "23135.33000000",
+      "highPrice": "24491.22000000",
+      "lowPrice": "22400.00000000",
+      "lastPrice": "24318.25000000",
+      "volume": "1039498.10978000",
+      "quoteVolume": "24271522807.76838630",
+      "openTime": 1659580020000,
+      "closeTime": 1660184820927,
+      "firstId": 1568787779,
+      "lastId": 1604337406,
+      "count": 35549628
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 8
+    }
+  ]
+}
+
+最新价格
+{
+  "id": "043a7cf2-bde3-4888-9604-c8ac41fcba4d",
+  "method": "ticker.price",
+  "params": {
+    "symbol": "BNBBTC"
+  }
+}
+
+获取交易对最新价格
+
+如果需要访问实时价格更新，请考虑使用 WebSocket Streams:
+
+<symbol>@aggTrade
+<symbol>@trade
+权重: 根据交易对的数量进行调整：
+
+参数	重量
+symbol	2
+symbols	4
+none	4
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	NO	获取单个交易对的 price
+symbols	ARRAY of STRING	获取多个交易对的 price
+symbolStatus	ENUM	NO	过滤具有此 tradingStatus 的交易对。
+对于单个交易对，如果状态不匹配，将返回错误 -1220 交易对与状态不匹配。
+对于多个或者全部交易对， 响应中不会包括状态不匹配的交易对。
+有效值： TRADING, HALT, BREAK
+备注：
+
+symbol 和 symbols 不能一起使用。
+
+如果未指定交易对，则返回有关当前在交易所交易的所有交易对的信息。
+
+数据源: 缓存
+
+响应:
+
+{
+  "id": "043a7cf2-bde3-4888-9604-c8ac41fcba4d",
+  "status": 200,
+  "result": {
+    "symbol": "BNBBTC",
+    "price": "0.01361900"
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+如果请求是有多个交易对，响应会是数组类型:
+
+{
+  "id": "e739e673-24c8-4adf-9cfa-b81f30330b09",
+  "status": 200,
+  "result": [
+    {
+      "symbol": "BNBBTC",
+      "price": "0.01363700"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "price": "24267.15000000"
+    },
+    {
+      "symbol": "BNBBUSD",
+      "price": "331.10000000"
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 4
+    }
+  ]
+}
+
+当前最优挂单
+{
+  "id": "057deb3a-2990-41d1-b58b-98ea0f09e1b4",
+  "method": "ticker.book",
+  "params": {
+    "symbols": [
+      "BNBBTC",
+      "BTCUSDT"
+    ]
+  }
+}
+
+在订单薄获取当前最优价格和数量。
+
+如果您需要访问实时订单薄 ticker 更新，请考虑使用 WebSocket Streams:
+
+<symbol>@bookTicker
+权重: 根据交易对的数量进行调整：
+
+参数	重量
+symbol	2
+symbols	4
+none	4
+参数:
+
+名称	类型	是否必需	描述
+symbol	STRING	NO	获取单个交易对的 ticker
+symbols	ARRAY of STRING	获取多个交易对的 ticker
+symbolStatus	ENUM	NO	过滤具有此 tradingStatus 的交易对。
+对于单个交易对，如果状态不匹配，将返回错误 -1220 交易对与状态不匹配。
+对于多个或者全部交易对， 响应中不会包括状态不匹配的交易对。
+有效值： TRADING, HALT, BREAK
+备注：
+
+symbol 和 symbols 不能一起使用。
+
+如果未指定交易对，则返回有关当前在交易所交易的所有交易对的信息。
+
+数据源: 缓存
+
+响应:
+
+{
+  "id": "9d32157c-a556-4d27-9866-66760a174b57",
+  "status": 200,
+  "result": {
+    "symbol": "BNBBTC",
+    "bidPrice": "0.01358000",
+    "bidQty": "12.53400000",
+    "askPrice": "0.01358100",
+    "askQty": "17.83700000"
+  },
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 2
+    }
+  ]
+}
+
+如果请求是有多个交易对，响应会是数组类型:
+
+{
+  "id": "057deb3a-2990-41d1-b58b-98ea0f09e1b4",
+  "status": 200,
+  "result": [
+    {
+      "symbol": "BNBBTC",
+      "bidPrice": "0.01358000",
+      "bidQty": "12.53400000",
+      "askPrice": "0.01358100",
+      "askQty": "17.83700000"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "bidPrice": "23980.49000000",
+      "bidQty": "0.01000000",
+      "askPrice": "23981.31000000",
+      "askQty": "0.01512000"
+    }
+  ],
+  "rateLimits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000,
+      "count": 4
+    }
+  ]
+}

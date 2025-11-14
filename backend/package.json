@@ -11,7 +11,8 @@
     "build": "echo 'Build complete'",
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "backtest": "node --max-old-space-size=8192 src/backtest/runBacktest.js"
   },
   "keywords": [
     "trading",
