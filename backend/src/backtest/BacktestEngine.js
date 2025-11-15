@@ -1,7 +1,6 @@
 const { systemLogger } = require('../controllers/logger/Logger');
 const VolumeProfileStrategy = require('../controllers/strategy/VolumeProfileStrategy');
 const PerformanceMetrics = require('./PerformanceMetrics');
-const TrendFilter = require('../utils/TrendFilter');
 const fs = require('fs');
 const path = require('path');
 
@@ -50,6 +49,22 @@ class BacktestEngine {
       hold: 0,
       errors: 0,
       edgeHits: 0  // 边沿触发次数
+    };
+
+    this.edgeDiagnostics = {
+      total: 0,
+      converted: 0,
+      failureReasons: { p4_failed: 0, p8_low_liquidity: 0, score_b_low: 0, other: 0 },
+      modulePass: { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0, P7: 0, P8: 0 },
+      moduleTotal: 0
+    };
+
+    this.edgeDiagnostics = {
+      total: 0,
+      converted: 0,
+      failureReasons: { p4_failed: 0, p8_low_liquidity: 0, score_b_low: 0, other: 0 },
+      modulePass: { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0, P7: 0, P8: 0 },
+      moduleTotal: 0
     };
     
     // 诊断模式：前N次边沿触发时输出详细日志
@@ -104,6 +119,22 @@ class BacktestEngine {
       edgeHits: 0
     };
 
+    this.edgeDiagnostics = {
+      total: 0,
+      converted: 0,
+      failureReasons: { p4_failed: 0, p8_low_liquidity: 0, score_b_low: 0, other: 0 },
+      modulePass: { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0, P7: 0, P8: 0 },
+      moduleTotal: 0
+    };
+
+    this.edgeDiagnostics = {
+      total: 0,
+      converted: 0,
+      failureReasons: { p4_failed: 0, p8_low_liquidity: 0, score_b_low: 0, other: 0 },
+      modulePass: { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0, P7: 0, P8: 0 },
+      moduleTotal: 0
+    };
+
     // 初始权益记录
     this.equityCurve.push({
       index: 0,
@@ -149,7 +180,7 @@ class BacktestEngine {
         // 没有持仓，检查是否有开仓信号
         try {
           // 构建策略需要的数据
-          const historicalKlines = klines.slice(Math.max(0, i - minBars), i + 1);
+          const historicalKlines = klines.slice(Math.max(0, i - minBars), Math.min(i + 2, klines.length));
           
           // 诊断模式：前N次分析时关闭静默模式
           const shouldDiagnose = this.diagnosticMode && this.signalStats.total < this.diagnosticLimit;
@@ -183,12 +214,33 @@ class BacktestEngine {
           // 统计边沿触发（用于诊断）
           if (signal && signal.scoreB !== undefined && signal.scoreB > 0) {
             this.signalStats.edgeHits++;
+            this.edgeDiagnostics.total++;
+            const converted = signal.signal === 'BUY' || signal.signal === 'SELL';
+            if (converted) {
+              this.edgeDiagnostics.converted++;
+            } else {
+              const r = (signal.reason || '').toLowerCase();
+              if (r.includes('low liquidity')) this.edgeDiagnostics.failureReasons.p8_low_liquidity++;
+              else if (r.includes('p4')) this.edgeDiagnostics.failureReasons.p4_failed++;
+              else if (r.includes('score_b insufficient')) this.edgeDiagnostics.failureReasons.score_b_low++;
+              else this.edgeDiagnostics.failureReasons.other++;
+            }
+            const d = signal.details || {};
+            this.edgeDiagnostics.moduleTotal++;
+            if (d.P1 && d.P1.passed) this.edgeDiagnostics.modulePass.P1++;
+            if (d.P2 && d.P2.passed) this.edgeDiagnostics.modulePass.P2++;
+            if (d.P3 && d.P3.passed) this.edgeDiagnostics.modulePass.P3++;
+            if (d.P4 && d.P4.passed) this.edgeDiagnostics.modulePass.P4++;
+            if (d.P5 && d.P5.passed) this.edgeDiagnostics.modulePass.P5++;
+            if (d.P6 && d.P6.passed) this.edgeDiagnostics.modulePass.P6++;
+            if (d.P7 && d.P7.passed) this.edgeDiagnostics.modulePass.P7++;
+            if (d.P8 && d.P8.timeWeight >= 1.0) this.edgeDiagnostics.modulePass.P8++;
             if (this.signalStats.edgeHits <= 10) {
               const timestamp = new Date(currentTime).toISOString().replace('T', ' ').substring(0, 19);
               systemLogger.info(`\n${'='.repeat(80)}`);
               systemLogger.info(`📍 第${this.signalStats.edgeHits}次边沿触发 (K线索引: ${i})`);
               systemLogger.info(`   时间: ${timestamp}`);
-              systemLogger.info(`   价格: $${currentPrice.toFixed(2)}`);
+              systemLogger.info(`   价格: ${currentPrice.toFixed(2)}`);
               systemLogger.info(`   成交量: ${currentKline[5].toFixed(2)}`);
               systemLogger.info(`   ScoreB: ${signal.scoreB?.toFixed(3)}, ScoreC: ${signal.scoreC?.toFixed(3)}, 最终: ${signal.finalScore?.toFixed(3)}`);
               systemLogger.info(`   信号: ${signal.signal}, 置信度: ${signal.confidence}`);
@@ -197,28 +249,9 @@ class BacktestEngine {
             }
           }
 
-          // 如果有BUY或SELL信号，应用趋势过滤
+          // 如果有BUY或SELL信号，直接执行（严格按照策略文档，不使用趋势过滤器）
           if (signal && (signal.signal === 'BUY' || signal.signal === 'SELL')) {
-            // 识别市场状态
-            const marketState = TrendFilter.identifyMarketState(historicalKlines);
-            const signalDirection = signal.signal === 'BUY' ? 'long' : 'short';
-            
-            // 判断是否应该执行
-            const filterResult = TrendFilter.shouldExecuteSignal(
-              marketState,
-              signalDirection,
-              signal.finalScore
-            );
-
-            if (!filterResult.allowed) {
-              // 信号被趋势过滤器否决
-              if (this.signalStats.edgeHits <= 10) {
-                systemLogger.info(`🚫 趋势过滤器否决: ${filterResult.reason}`);
-              }
-              continue; // 跳过此信号
-            }
-            
-            // 信号通过趋势过滤
+            // 计算滑点
             const slippage = this.slippageMode === 'dynamic'
               ? this.calculateDynamicSlippage(currentPrice, atrValues[i])
               : this.fixedSlippage;
@@ -301,7 +334,7 @@ class BacktestEngine {
     }
 
     // 生成报告
-    const report = this.metricsCalculator.generateReport(metrics, mcResults);
+    const report = this.metricsCalculator.generateReport(metrics, mcResults, this.edgeDiagnostics);
     console.log('\n' + report);
 
     return {
@@ -309,7 +342,8 @@ class BacktestEngine {
       mcResults,
       trades: this.trades,
       equityCurve: this.equityCurve,
-      config: this.getConfig()
+      config: this.getConfig(),
+      diagnostics: this.edgeDiagnostics
     };
   }
 
@@ -324,20 +358,32 @@ class BacktestEngine {
       ? price * (1 + slippage)
       : price * (1 - slippage);
 
-    // 计算持仓数量（基于positionUsd和杠杆）
-    const quantity = this.positionUsd / entryPrice;
+    // positionUsd是保证金（实际投入），名义持仓价值 = positionUsd * leverage
+    const notionalValue = this.positionUsd * this.leverage;
+    
+    // 计算持仓数量（基于名义持仓价值）
+    const quantity = notionalValue / entryPrice;
 
-    // 计算手续费
-    const fee = this.positionUsd * this.feeRate;
+    // 计算手续费（基于名义持仓价值）
+    const fee = notionalValue * this.feeRate;
 
-    // 计算止损止盈价格
-    const stopLoss = side === 'long'
-      ? entryPrice * (1 - this.stopLossPct)
-      : entryPrice * (1 + this.stopLossPct);
+    // 使用策略返回的止损止盈价格（如果策略提供了）
+    // 否则使用固定百分比计算（向后兼容）
+    let stopLoss, takeProfit;
+    if (signalData && signalData.stopLoss !== undefined && signalData.takeProfit !== undefined) {
+      // 使用策略返回的止损止盈（严格按照文档：基于VAL-3/VAH+3计算）
+      stopLoss = signalData.stopLoss;
+      takeProfit = signalData.takeProfit;
+    } else {
+      // 向后兼容：使用固定百分比计算
+      stopLoss = side === 'long'
+        ? entryPrice * (1 - this.stopLossPct)
+        : entryPrice * (1 + this.stopLossPct);
 
-    const takeProfit = side === 'long'
-      ? entryPrice * (1 + this.takeProfitPct)
-      : entryPrice * (1 - this.takeProfitPct);
+      takeProfit = side === 'long'
+        ? entryPrice * (1 + this.takeProfitPct)
+        : entryPrice * (1 - this.takeProfitPct);
+    }
 
     this.currentPosition = {
       side,
@@ -350,10 +396,11 @@ class BacktestEngine {
       signal: signalData
     };
 
-    // 扣除手续费
-    this.currentCapital -= fee;
+    // 扣除保证金（实际投入资金）和手续费
+    // positionUsd就是保证金，不需要除以leverage
+    this.currentCapital -= (this.positionUsd + fee);
 
-    systemLogger.info(`📈 开仓: ${side.toUpperCase()} @ $${entryPrice.toFixed(2)} (索引 ${index})`);
+    systemLogger.info(`📈 开仓: ${side.toUpperCase()} @ $${entryPrice.toFixed(2)} (索引 ${index}) | 保证金: $${this.positionUsd.toFixed(2)}, 名义持仓: $${notionalValue.toFixed(2)}, 手续费: $${fee.toFixed(2)}`);
   }
 
   /**
@@ -366,24 +413,34 @@ class BacktestEngine {
 
     const pos = this.currentPosition;
     
-    // 计算手续费
-    const exitFee = this.positionUsd * this.feeRate;
+    // positionUsd是保证金，名义持仓价值 = positionUsd * leverage
+    const notionalValue = this.positionUsd * this.leverage;
     
-    // 计算原始收益（不含杠杆）
+    // 计算手续费（基于名义持仓价值）
+    const exitFee = notionalValue * this.feeRate;
+    
+    // 计算价格变化
     const priceChange = pos.side === 'long'
       ? exitPrice - pos.entry_price
       : pos.entry_price - exitPrice;
     
-    const grossReturn = priceChange * pos.quantity;
+    // 计算价格变化百分比（小数形式，如0.01表示1%）
+    const priceChangePct = priceChange / pos.entry_price;
     
-    // 应用杠杆
-    const leveragedReturn = grossReturn * this.leverage;
+    // gross_return: 价格变化百分比（不含杠杆，纯价格变化）
+    const grossReturnPct = priceChangePct;
     
-    // 扣除手续费
+    // leveraged_return: 含杠杆的收益绝对值（美元）
+    // 收益 = 名义持仓价值 * 价格变化百分比 = 保证金 * 杠杆 * 价格变化百分比
+    const leveragedReturn = notionalValue * priceChangePct;
+    
+    // net_return: 扣除手续费后的净收益绝对值（美元）
     const netReturn = leveragedReturn - pos.entry_fee - exitFee;
     
-    // 更新资金
-    this.currentCapital += netReturn;
+    // 更新资金：返还保证金 + 盈亏 - 手续费
+    // 开仓时扣除了 positionUsd（保证金）+ entry_fee
+    // 平仓时应该返还 positionUsd（保证金）+ 盈亏 - exit_fee
+    this.currentCapital += (this.positionUsd + netReturn);
 
     // 记录交易
     const trade = {
@@ -396,9 +453,9 @@ class BacktestEngine {
       take_profit_price: pos.take_profit,
       quantity: pos.quantity,
       exit_reason: reason,
-      gross_return: grossReturn,
-      leveraged_return: leveragedReturn,
-      net_return: netReturn,
+      gross_return: grossReturnPct,  // 价格变化百分比（小数，不含杠杆）
+      leveraged_return: leveragedReturn,  // 含杠杆的收益绝对值（美元）
+      net_return: netReturn,  // 扣除手续费后的净收益绝对值（美元）
       entry_fee: pos.entry_fee,
       exit_fee: exitFee,
       total_fees: pos.entry_fee + exitFee,
@@ -459,7 +516,13 @@ class BacktestEngine {
         ? currentPrice - pos.entry_price
         : pos.entry_price - currentPrice;
       
-      const unrealizedPnl = priceChange * pos.quantity * this.leverage;
+      // 计算价格变化百分比
+      const priceChangePct = priceChange / pos.entry_price;
+      
+      // 计算未实现盈亏（已包含杠杆效应）
+      // 名义持仓价值 = positionUsd * leverage
+      const notionalValue = this.positionUsd * this.leverage;
+      const unrealizedPnl = notionalValue * priceChangePct;
       equity += unrealizedPnl;
     }
 
@@ -516,7 +579,10 @@ class BacktestEngine {
     const filename = `${this.symbol.replace('/', '_')}_${segment}_trades.csv`;
     const filepath = path.join(this.outputDir, filename);
 
-    const headers = 'side,entry_index,exit_index,entry_price,exit_price,stop_loss_price,take_profit_price,exit_reason,gross_return,leveraged_return,net_return\n';
+    // gross_return是价格变化百分比（小数，如0.01表示1%，不含杠杆）
+    // leveraged_return是含杠杆的收益绝对值（美元）
+    // net_return是扣除手续费后的净收益绝对值（美元）
+    const headers = 'side,entry_index,exit_index,entry_price,exit_price,stop_loss_price,take_profit_price,exit_reason,gross_return_pct,leveraged_return_usd,net_return_usd\n';
     
     const rows = trades.map(t => {
       return [
@@ -528,9 +594,9 @@ class BacktestEngine {
         t.stop_loss_price.toFixed(6),
         t.take_profit_price.toFixed(6),
         t.exit_reason,
-        t.gross_return.toFixed(6),
-        t.leveraged_return.toFixed(6),
-        t.net_return.toFixed(6)
+        (t.gross_return * 100).toFixed(4),  // 转换为百分比数值（如-0.87表示-0.87%）
+        t.leveraged_return.toFixed(6),  // 美元绝对值
+        t.net_return.toFixed(6)  // 美元绝对值
       ].join(',');
     }).join('\n');
 
@@ -552,6 +618,7 @@ class BacktestEngine {
       config: result.config,
       metrics: { ...result.metrics, trades: undefined, equity_curve: undefined },
       mcResults: result.mcResults,
+      diagnostics: result.diagnostics,
       tradeCount: result.trades.length,
       timestamp: new Date().toISOString()
     };
@@ -715,8 +782,8 @@ class BacktestEngine {
       this.strategy.params.P4_VOLUME_RATIO = params.growthRatio;
     }
 
-    // 应用到模块C参数
-    if (params.delta !== undefined) {
+    // 已移除模块C，忽略此参数（保留兼容性）
+    if (params.delta !== undefined && this.strategy.moduleC) {
       this.strategy.moduleC.DELTA_THRESHOLD_LONG = params.delta;
       this.strategy.moduleC.DELTA_THRESHOLD_SHORT = -params.delta;
     }

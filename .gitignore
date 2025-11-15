@@ -25,7 +25,7 @@ coverage
 .env.production.local
 
 # Database
-backend/data/*.db
+backend/data/
 data/*.db-shm
 data/*.db-wal
 
@@ -90,3 +90,5 @@ coverage
 *.local
 .claude
 CLAUDE.md
+
+backend/docs

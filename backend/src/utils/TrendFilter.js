@@ -67,18 +67,17 @@ class TrendFilter {
    * @returns {Object} { allowed: boolean, reason: string, adjustedScore: number }
    */
   static shouldExecuteSignal(marketState, signalDirection, finalScore) {
-    // ==================== 只做空模式 ====================
-    // 回测数据显示：
-    // - 做空（熊市）: +13.37%，胜率35.17% ✓
-    // - 做多（牛市）: -31.57%，胜率31.47% ✗
-    // - 做多（震荡）: -37.38%，胜率21.70% ✗
-    // 结论：策略只在做空时有效，禁止做多
-    const ONLY_SHORT_MODE = true;
+    // ==================== 新策略v2.0：多空双向 ====================
+    // 基于 正态分布初稿1策略.txt 实现
+    // 策略要求：多空双向，Score_B ≥ 0.75 触发交易
+    // 趋势过滤器仅作为辅助，不强制限制方向
+    const ONLY_SHORT_MODE = false; // 禁用只做空模式，允许双向交易
     
+    // 如果启用只做空模式（用于旧策略），则禁止做多
     if (ONLY_SHORT_MODE && signalDirection === 'long') {
       return {
         allowed: false,
-        reason: 'SHORT-ONLY mode: Long signals disabled (poor backtest performance)',
+        reason: 'SHORT-ONLY mode: Long signals disabled',
         adjustedScore: 0
       };
     }

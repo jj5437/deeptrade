@@ -386,7 +386,7 @@ class PerformanceMetrics {
    * @param {Object} mcResults - 蒙特卡洛结果（可选）
    * @returns {string} 报告文本
    */
-  generateReport(metrics, mcResults = null) {
+  generateReport(metrics, mcResults = null, diagnostics = null) {
     const lines = [];
     
     lines.push('='.repeat(80));
@@ -458,6 +458,93 @@ class PerformanceMetrics {
       lines.push(`  P50: ${mcResults.maxDrawdown.p50.toFixed(2)}%`);
       lines.push(`  P90: ${mcResults.maxDrawdown.p90.toFixed(2)}%`);
       lines.push(`  P95: ${mcResults.maxDrawdown.p95.toFixed(2)}%`);
+      lines.push('');
+    }
+
+    if (diagnostics) {
+      const t = diagnostics.total || 0;
+      const c = diagnostics.converted || 0;
+      const fTotal = Math.max(t - c, 0);
+      const fr = diagnostics.failureReasons || {};
+      const mp = diagnostics.modulePass || {};
+      const mt = diagnostics.moduleTotal || 0;
+      lines.push('【模块B诊断】');
+      lines.push(`边沿触发: ${t} 次`);
+      lines.push(`转化为信号: ${t > 0 ? ((c / t) * 100).toFixed(2) : '0.00'}% (${c}/${t})`);
+      lines.push('失败原因占比:');
+      lines.push(`  P4未满足: ${fTotal > 0 ? ((fr.p4_failed || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  P8低流动性: ${fTotal > 0 ? ((fr.p8_low_liquidity || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  Score_B不足: ${fTotal > 0 ? ((fr.score_b_low || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  其他: ${fTotal > 0 ? ((fr.other || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push('');
+      lines.push('模块条件通过率:');
+      const rate = k => mt > 0 ? (((mp[k] || 0) / mt) * 100).toFixed(2) : '0.00';
+      lines.push(`  P1: ${rate('P1')}%`);
+      lines.push(`  P2: ${rate('P2')}%`);
+      lines.push(`  P3: ${rate('P3')}%`);
+      lines.push(`  P4: ${rate('P4')}%`);
+      lines.push(`  P5: ${rate('P5')}%`);
+      lines.push(`  P6: ${rate('P6')}%`);
+      lines.push(`  P7: ${rate('P7')}%`);
+      lines.push(`  P8: ${rate('P8')}%`);
+      lines.push('');
+    }
+
+    if (diagnostics) {
+      const t = diagnostics.total || 0;
+      const c = diagnostics.converted || 0;
+      const fTotal = Math.max(t - c, 0);
+      const fr = diagnostics.failureReasons || {};
+      const mp = diagnostics.modulePass || {};
+      const mt = diagnostics.moduleTotal || 0;
+      lines.push('【模块B诊断】');
+      lines.push(`边沿触发: ${t} 次`);
+      lines.push(`转化为信号: ${t > 0 ? ((c / t) * 100).toFixed(2) : '0.00'}% (${c}/${t})`);
+      lines.push('失败原因占比:');
+      lines.push(`  P4未满足: ${fTotal > 0 ? ((fr.p4_failed || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  P8低流动性: ${fTotal > 0 ? ((fr.p8_low_liquidity || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  Score_B不足: ${fTotal > 0 ? ((fr.score_b_low || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  其他: ${fTotal > 0 ? ((fr.other || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push('');
+      lines.push('模块条件通过率:');
+      const rate = k => mt > 0 ? (((mp[k] || 0) / mt) * 100).toFixed(2) : '0.00';
+      lines.push(`  P1: ${rate('P1')}%`);
+      lines.push(`  P2: ${rate('P2')}%`);
+      lines.push(`  P3: ${rate('P3')}%`);
+      lines.push(`  P4: ${rate('P4')}%`);
+      lines.push(`  P5: ${rate('P5')}%`);
+      lines.push(`  P6: ${rate('P6')}%`);
+      lines.push(`  P7: ${rate('P7')}%`);
+      lines.push(`  P8: ${rate('P8')}%`);
+      lines.push('');
+    }
+
+    if (diagnostics) {
+      const t = diagnostics.total || 0;
+      const c = diagnostics.converted || 0;
+      const fTotal = Math.max(t - c, 0);
+      const fr = diagnostics.failureReasons || {};
+      const mp = diagnostics.modulePass || {};
+      const mt = diagnostics.moduleTotal || 0;
+      lines.push('【模块B诊断】');
+      lines.push(`边沿触发: ${t} 次`);
+      lines.push(`转化为信号: ${t > 0 ? ((c / t) * 100).toFixed(2) : '0.00'}% (${c}/${t})`);
+      lines.push('失败原因占比:');
+      lines.push(`  P4未满足: ${fTotal > 0 ? ((fr.p4_failed || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  P8低流动性: ${fTotal > 0 ? ((fr.p8_low_liquidity || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  Score_B不足: ${fTotal > 0 ? ((fr.score_b_low || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push(`  其他: ${fTotal > 0 ? ((fr.other || 0) / fTotal * 100).toFixed(2) : '0.00'}%`);
+      lines.push('');
+      lines.push('模块条件通过率:');
+      const rate = k => mt > 0 ? (((mp[k] || 0) / mt) * 100).toFixed(2) : '0.00';
+      lines.push(`  P1: ${rate('P1')}%`);
+      lines.push(`  P2: ${rate('P2')}%`);
+      lines.push(`  P3: ${rate('P3')}%`);
+      lines.push(`  P4: ${rate('P4')}%`);
+      lines.push(`  P5: ${rate('P5')}%`);
+      lines.push(`  P6: ${rate('P6')}%`);
+      lines.push(`  P7: ${rate('P7')}%`);
+      lines.push(`  P8: ${rate('P8')}%`);
       lines.push('');
     }
 

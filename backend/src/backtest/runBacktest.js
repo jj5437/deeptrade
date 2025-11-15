@@ -11,15 +11,58 @@ const BacktestEngine = require('./BacktestEngine');
 const { systemLogger } = require('../controllers/logger/Logger');
 
 /**
+ * 将1分钟K线合并为2分钟K线
+ * @param {Array} klines1m - 1分钟K线数组 [timestamp, open, high, low, close, volume]
+ * @returns {Array} 合并后的2分钟K线数组
+ */
+function merge1mTo2m(klines1m) {
+  if (!klines1m || klines1m.length === 0) {
+    return [];
+  }
+
+  const klines2m = [];
+  
+  // 每2根1分钟K线合并成1根2分钟K线
+  for (let i = 0; i < klines1m.length - 1; i += 2) {
+    const k1 = klines1m[i];
+    const k2 = klines1m[i + 1];
+    
+    if (!k1 || !k2) {
+      break; // 如果最后一根K线没有配对，跳过
+    }
+
+    // 合并逻辑：
+    // timestamp: 第一根K线的时间戳
+    // open: 第一根K线的开盘价
+    // high: 两根K线的最高价
+    // low: 两根K线的最低价
+    // close: 第二根K线的收盘价
+    // volume: 两根K线的成交量之和
+    const mergedKline = [
+      k1[0],                    // timestamp (第一根的时间)
+      k1[1],                    // open (第一根的开盘价)
+      Math.max(k1[2], k2[2]),  // high (最高价)
+      Math.min(k1[3], k2[3]),  // low (最低价)
+      k2[4],                    // close (第二根的收盘价)
+      k1[5] + k2[5]            // volume (成交量之和)
+    ];
+    
+    klines2m.push(mergedKline);
+  }
+
+  return klines2m;
+}
+
+/**
  * 从环境变量或使用默认值
  */
 function getConfig() {
   return {
     // 基础参数
     symbol: process.env.BACKTEST_SYMBOL || 'BTC/USDT',
-    timeframe: process.env.BACKTEST_TIMEFRAME || '3m',
-    startTime: new Date(process.env.BACKTEST_START || '2021-01-01T00:00:00Z'),
-    endTime: new Date(process.env.BACKTEST_END || '2023-06-30T23:59:00Z'),
+    timeframe: process.env.BACKTEST_TIMEFRAME || '2m', // 新策略需要2分钟K线
+    startTime: new Date(process.env.BACKTEST_START || '2024-01-01T00:00:00Z'),
+    endTime: new Date(process.env.BACKTEST_END || '2025-06-30T23:59:00Z'),
     
     // 资金参数
     initialCapital: parseFloat(process.env.BACKTEST_INITIAL_CAPITAL || process.env.INITIAL_CAPITAL || '10000'),
@@ -40,19 +83,14 @@ function getConfig() {
     // 分市场状态
     regimeSegments: [
       {
-        name: 'bull_2021',
-        start: '2021-01-01T00:00:00Z',
-        end: '2021-12-31T23:59:00Z'
+        name: 'bull_2024',
+        start: '2024-01-01T00:00:00Z',
+        end: '2024-12-31T23:59:00Z'
       },
       {
-        name: 'bear_2022',
-        start: '2022-01-01T00:00:00Z',
-        end: '2022-12-31T23:59:00Z'
-      },
-      {
-        name: 'range_2023H1',
-        start: '2023-01-01T00:00:00Z',
-        end: '2023-06-30T23:59:00Z'
+        name: 'bear_2025',
+        start: '2025-01-01T00:00:00Z',
+        end: '2025-12-31T23:59:00Z'
       }
     ],
     
@@ -118,16 +156,36 @@ async function main() {
     systemLogger.info('📥 步骤1: 加载历史数据...');
     const dataLoader = new HistoricalDataLoader();
     
-    const klines = await dataLoader.getHistoricalData(
-      config.symbol,
-      config.timeframe,
-      config.startTime,
-      config.endTime,
-      false // 不强制重新下载
-    );
+    // 新策略需要2分钟K线，但币安只支持1分钟K线
+    // 因此获取1分钟K线，然后合并成2分钟K线
+    let klines;
+    if (config.timeframe === '2m' || config.timeframe === '2') {
+      systemLogger.info('   策略需要2分钟K线，将从1分钟K线合并...');
+      // 获取1分钟K线（需要更多数据以合并）
+      const klines1m = await dataLoader.getHistoricalData(
+        config.symbol,
+        '1m',
+        config.startTime,
+        config.endTime,
+        false // 不强制重新下载
+      );
+      
+      // 合并成2分钟K线
+      klines = merge1mTo2m(klines1m);
+      systemLogger.info(`   ✅ 获取${klines1m.length}根1分钟K线，合并为${klines.length}根2分钟K线`);
+    } else {
+      klines = await dataLoader.getHistoricalData(
+        config.symbol,
+        config.timeframe,
+        config.startTime,
+        config.endTime,
+        false // 不强制重新下载
+      );
+    }
 
-    // 数据完整性检查
-    const integrity = dataLoader.checkDataIntegrity(klines, config.timeframe);
+    // 数据完整性检查（使用实际的时间周期）
+    const actualTimeframe = (config.timeframe === '2m' || config.timeframe === '2') ? '2m' : config.timeframe;
+    const integrity = dataLoader.checkDataIntegrity(klines, actualTimeframe);
     
     // 数据统计
     const stats = dataLoader.getDataStatistics(klines);
